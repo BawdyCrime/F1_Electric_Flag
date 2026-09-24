@@ -9,6 +9,10 @@
 static const char *TAG = "bsp_board";
 static i2c_master_bus_handle_t s_i2c_bus_handle = NULL;
 
+i2c_master_bus_handle_t bsp_board_get_i2c_bus_handle(void) {
+    return s_i2c_bus_handle;
+}
+
 static esp_err_t bsp_board_configure_gpio(gpio_num_t gpio, bool output, bool pullup, bool pulldown) {
     if (gpio == GPIO_NUM_NC) {
         return ESP_OK;
@@ -34,12 +38,14 @@ esp_err_t bsp_board_init(void) {
         return err;
     }
 
-    err = bsp_board_configure_gpio(BSP_TOUCH_RST_GPIO, true, false, false);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "touch reset GPIO config failed: %s", esp_err_to_name(err));
-        return err;
+    if (BSP_TOUCH_RST_GPIO != GPIO_NUM_NC) {
+        err = bsp_board_configure_gpio(BSP_TOUCH_RST_GPIO, true, false, false);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "touch reset GPIO config failed: %s", esp_err_to_name(err));
+            return err;
+        }
+        gpio_set_level(BSP_TOUCH_RST_GPIO, 1);
     }
-    gpio_set_level(BSP_TOUCH_RST_GPIO, 1);
 
     err = bsp_board_configure_gpio(BSP_STATUS_LED_GPIO, true, false, false);
     if (err != ESP_OK) {
