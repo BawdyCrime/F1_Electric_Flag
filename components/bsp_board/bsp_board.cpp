@@ -1,13 +1,52 @@
 #include "bsp_board.h"
 
 #include <stdio.h>
+#include <string>
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "serial_box_printer.h"
+
 static const char *TAG = "bsp_board";
 static i2c_master_bus_handle_t s_i2c_bus_handle = NULL;
+
+namespace {
+
+std::string gpio_label(gpio_num_t gpio) {
+    if (gpio == GPIO_NUM_NC) {
+        return "NC";
+    }
+    char buffer[16];
+    std::snprintf(buffer, sizeof(buffer), "GPIO%d", static_cast<int>(gpio));
+    return buffer;
+}
+
+std::string gpio_mode_and_pull(gpio_num_t gpio, bool output, bool pullup, bool pulldown) {
+    if (gpio == GPIO_NUM_NC) {
+        return "not assigned";
+    }
+
+    std::string mode = output ? "output" : "input";
+    std::string pull = "none";
+    if (pullup && pulldown) {
+        pull = "pull-up + pull-down";
+    } else if (pullup) {
+        pull = "pull-up";
+    } else if (pulldown) {
+        pull = "pull-down";
+    }
+    return mode + ", " + pull;
+}
+
+std::string spi_mode_label(int mode) {
+    char buffer[16];
+    std::snprintf(buffer, sizeof(buffer), "mode-%d", mode);
+    return buffer;
+}
+
+}  // namespace
 
 i2c_master_bus_handle_t bsp_board_get_i2c_bus_handle(void) {
     return s_i2c_bus_handle;
@@ -115,6 +154,32 @@ esp_err_t bsp_board_i2c_scan(void) {
     }
 
     return ESP_OK;
+}
+
+void bsp_board_print_peripheral_summary(void) {
+    app::SerialBoxPrinter printer("BOARD PERIPHERALS");
+
+    printer.add_body_line("GPIO");
+    printer.add_body_bullet("TOUCH_INT: " + gpio_label(BSP_TOUCH_INT_GPIO) + " [" + gpio_mode_and_pull(BSP_TOUCH_INT_GPIO, false, true, false) + "]", 2U);
+    printer.add_body_bullet("TOUCH_RST: " + gpio_label(BSP_TOUCH_RST_GPIO) + " [" + gpio_mode_and_pull(BSP_TOUCH_RST_GPIO, true, false, false) + "]", 2U);
+    printer.add_body_bullet("STATUS_LED: " + gpio_label(BSP_STATUS_LED_GPIO) + " [" + gpio_mode_and_pull(BSP_STATUS_LED_GPIO, true, false, false) + "]", 2U);
+    printer.add_body_bullet("LCD_BL: " + gpio_label(BSP_LCD_BL_GPIO) + " [" + gpio_mode_and_pull(BSP_LCD_BL_GPIO, true, false, false) + "]", 2U);
+
+    printer.add_blank_body();
+    printer.add_body_line("I2C");
+    printer.add_body_bullet("Bus: I2C0", 2U);
+    printer.add_body_bullet(std::string("Pins: SDA=") + gpio_label(BSP_I2C_SDA_GPIO) + ", SCL=" + gpio_label(BSP_I2C_SCL_GPIO), 2U);
+    printer.add_body_bullet(std::string("Clock: ") + std::to_string(BSP_I2C_CLOCK_HZ) + " Hz, mode=master, pullups=enabled", 2U);
+    printer.add_body_bullet("Scan targets: PMIC 0x34/0x35, IMU 0x6A/0x6B", 2U);
+
+    printer.add_blank_body();
+    printer.add_body_line("SPI");
+    printer.add_body_bullet(std::string("Host: ") + std::to_string(static_cast<int>(BSP_SPI_HOST)), 2U);
+    printer.add_body_bullet(std::string("Pins: MOSI=") + gpio_label(BSP_SPI_MOSI_GPIO) + ", MISO=" + gpio_label(BSP_SPI_MISO_GPIO) + ", SCLK=" + gpio_label(BSP_SPI_SCLK_GPIO) + ", CS=" + gpio_label(BSP_SPI_CS_GPIO), 2U);
+    printer.add_body_bullet(std::string("Clock: ") + std::to_string(BSP_SPI_CLOCK_HZ) + " Hz, format=" + spi_mode_label(0), 2U);
+    printer.add_body_bullet("Mode: pending schematic validation", 2U);
+    printer.add_body_bullet("Status: not initialized yet; display SPI mapping must be confirmed from schematic before using the bus.", 2U);
+    printer.print();
 }
 
 esp_err_t bsp_board_set_backlight(bool enabled) {
