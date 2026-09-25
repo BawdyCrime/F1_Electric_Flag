@@ -26,12 +26,21 @@ extern "C" {
 #define BSP_TOUCH_RST_GPIO GPIO_NUM_NC
 #define BSP_LCD_BL_GPIO    GPIO_NUM_6
 
-#define BSP_SPI_HOST       SPI2_HOST
-#define BSP_SPI_MOSI_GPIO  GPIO_NUM_NC
-#define BSP_SPI_MISO_GPIO  GPIO_NUM_NC
-#define BSP_SPI_SCLK_GPIO  GPIO_NUM_NC
-#define BSP_SPI_CS_GPIO    GPIO_NUM_NC
-#define BSP_SPI_CLOCK_HZ   12000000u
+/*
+ * Verified from the legacy ESP32-S3-Touch-LCD-3.5B board examples.
+ * The LCD uses a 4-wire QSPI-style interface with D0..D3 on GPIO1..4,
+ * SCLK on GPIO5, chip-select on GPIO12, and backlight on GPIO6.
+ */
+#define BSP_SPI_HOST          SPI2_HOST
+#define BSP_SPI_SCLK_GPIO     GPIO_NUM_5
+#define BSP_SPI_MOSI_GPIO     GPIO_NUM_1
+#define BSP_SPI_MISO_GPIO     GPIO_NUM_NC
+#define BSP_SPI_CS_GPIO       GPIO_NUM_12
+#define BSP_SPI_QSPI_IO0_GPIO GPIO_NUM_1
+#define BSP_SPI_QSPI_IO1_GPIO GPIO_NUM_2
+#define BSP_SPI_QSPI_IO2_GPIO GPIO_NUM_3
+#define BSP_SPI_QSPI_IO3_GPIO GPIO_NUM_4
+#define BSP_SPI_CLOCK_HZ      40000000u
 
 i2c_master_bus_handle_t bsp_board_get_i2c_bus_handle(void);
 esp_err_t bsp_board_init(void);

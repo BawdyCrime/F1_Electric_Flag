@@ -15,6 +15,7 @@ extern "C" {
 
 esp_err_t bsp_pmic_init(void);
 esp_err_t bsp_pmic_deinit(void);
+void bsp_pmic_print_status(void);
 esp_err_t bsp_pmic_read_status(uint8_t *status1, uint8_t *status2, uint8_t *chip_id);
 esp_err_t bsp_pmic_enable_rails(bool enable);
 esp_err_t bsp_pmic_set_backlight_enable(bool enable);

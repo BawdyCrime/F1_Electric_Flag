@@ -1,9 +1,13 @@
 #include "bsp_pmic.h"
 
+#include <cstdio>
+#include <string>
+
 #include "esp_log.h"
 
 #include "driver/i2c_master.h"
 #include "bsp_board.h"
+#include "serial_box_printer.h"
 
 static const char *TAG = "bsp_pmic";
 
@@ -81,6 +85,42 @@ esp_err_t bsp_pmic_deinit(void) {
     s_pmic_initialized = false;
     ESP_LOGI(TAG, "PMIC deinit complete");
     return ESP_OK;
+}
+
+void bsp_pmic_print_status(void) {
+    app::SerialBoxPrinter printer("PMIC STATUS");
+
+    if (s_pmic_dev_handle == NULL) {
+        printer.add_body_line("State: not initialized");
+        printer.add_body_line("Hint: call bsp_pmic_init() before reading PMIC status");
+        printer.print();
+        return;
+    }
+
+    uint8_t status1 = 0;
+    uint8_t status2 = 0;
+    uint8_t chip_id = 0;
+    esp_err_t err = bsp_pmic_read_status(&status1, &status2, &chip_id);
+    if (err != ESP_OK) {
+        printer.add_body_line("State: read failed");
+        printer.add_body_line(std::string("Error: ") + esp_err_to_name(err));
+        printer.print();
+        return;
+    }
+
+    char chip_buf[16];
+    char status1_buf[16];
+    char status2_buf[16];
+    std::snprintf(chip_buf, sizeof(chip_buf), "0x%02X", chip_id);
+    std::snprintf(status1_buf, sizeof(status1_buf), "0x%02X", status1);
+    std::snprintf(status2_buf, sizeof(status2_buf), "0x%02X", status2);
+
+    printer.add_body_line(std::string("Chip ID: ") + chip_buf);
+    printer.add_body_line(std::string("Status 1: ") + status1_buf);
+    printer.add_body_line(std::string("Status 2: ") + status2_buf);
+    printer.add_body_bullet("Power seq: FAST_PWRON 0x28/0x29/0x2A/0x2B sets DC/ALDO/BLDO/CPULDO/DLDO order", 2U);
+    printer.add_body_bullet("Rails remain disabled until schematic-confirmed sequencing is validated", 2U);
+    printer.print();
 }
 
 esp_err_t bsp_pmic_read_status(uint8_t *status1, uint8_t *status2, uint8_t *chip_id) {

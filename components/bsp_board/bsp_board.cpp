@@ -175,10 +175,10 @@ void bsp_board_print_peripheral_summary(void) {
     printer.add_blank_body();
     printer.add_body_line("SPI");
     printer.add_body_bullet(std::string("Host: ") + std::to_string(static_cast<int>(BSP_SPI_HOST)), 2U);
-    printer.add_body_bullet(std::string("Pins: MOSI=") + gpio_label(BSP_SPI_MOSI_GPIO) + ", MISO=" + gpio_label(BSP_SPI_MISO_GPIO) + ", SCLK=" + gpio_label(BSP_SPI_SCLK_GPIO) + ", CS=" + gpio_label(BSP_SPI_CS_GPIO), 2U);
+    printer.add_body_bullet(std::string("Pins: SCLK=") + gpio_label(BSP_SPI_SCLK_GPIO) + ", D0=" + gpio_label(BSP_SPI_QSPI_IO0_GPIO) + ", D1=" + gpio_label(BSP_SPI_QSPI_IO1_GPIO) + ", D2=" + gpio_label(BSP_SPI_QSPI_IO2_GPIO) + ", D3=" + gpio_label(BSP_SPI_QSPI_IO3_GPIO) + ", CS=" + gpio_label(BSP_SPI_CS_GPIO), 2U);
     printer.add_body_bullet(std::string("Clock: ") + std::to_string(BSP_SPI_CLOCK_HZ) + " Hz, format=" + spi_mode_label(0), 2U);
-    printer.add_body_bullet("Mode: pending schematic validation", 2U);
-    printer.add_body_bullet("Status: not initialized yet; display SPI mapping must be confirmed from schematic before using the bus.", 2U);
+    printer.add_body_bullet("Mode: 4-wire QSPI LCD bus from legacy ESP32-S3-Touch-LCD-3.5B reference", 2U);
+    printer.add_body_bullet("Status: legacy pin map validated; display bus ready when powered.", 2U);
     printer.print();
 }
 
