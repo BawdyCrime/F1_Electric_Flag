@@ -37,39 +37,6 @@ const char *chip_model_name(uint8_t model) {
     }
 }
 
-std::string chip_features_string(const esp_chip_info_t &chip_info) {
-    std::string features;
-    auto add_feature = [&](const char *name) {
-        if (!features.empty()) {
-            features += ", ";
-        }
-        features += name;
-    };
-
-    if (chip_info.features & CHIP_FEATURE_WIFI_BGN) {
-        add_feature("WiFi");
-    }
-    if (chip_info.features & CHIP_FEATURE_BT) {
-        add_feature("BT");
-    }
-    if (chip_info.features & CHIP_FEATURE_BLE) {
-        add_feature("BLE");
-    }
-    if (chip_info.features & CHIP_FEATURE_EMB_FLASH) {
-        add_feature("embedded flash");
-    }
-    if (chip_info.features & CHIP_FEATURE_EMB_PSRAM) {
-        add_feature("embedded PSRAM");
-    }
-    if (chip_info.features & CHIP_FEATURE_IEEE802154) {
-        add_feature("IEEE802.15.4");
-    }
-    if (features.empty()) {
-        features = "none";
-    }
-    return features;
-}
-
 std::string reset_reason_string(void) {
     switch (esp_reset_reason()) {
         case ESP_RST_POWERON:
@@ -97,6 +64,20 @@ std::string reset_reason_string(void) {
     }
 }
 
+std::string format_mb_value(uint32_t bytes) {
+    const double mb = static_cast<double>(bytes) / 1024.0 / 1024.0;
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%.2f MB", mb);
+    return buf;
+}
+
+std::string format_mb_free(size_t bytes) {
+    const double mb = static_cast<double>(bytes) / 1024.0 / 1024.0;
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%.2f MB free", mb);
+    return buf;
+}
+
 }  // namespace
 
 void bsp_board_print_info(void) {
@@ -113,29 +94,39 @@ void bsp_board_print_info(void) {
     uint32_t flash_size_bytes = 0;
     std::string flash_value = "unknown";
     if (esp_flash_get_size(NULL, &flash_size_bytes) == ESP_OK) {
-        char flash_buf[32];
-        std::snprintf(flash_buf, sizeof(flash_buf), "%u bytes", static_cast<unsigned>(flash_size_bytes));
-        flash_value = flash_buf;
+        flash_value = format_mb_value(flash_size_bytes);
     }
 
     size_t psram_size = esp_psram_get_size();
-    std::string psram_value = "not present";
+    std::string psram_value = "N/A";
     if (psram_size > 0) {
-        char psram_buf[32];
-        std::snprintf(psram_buf, sizeof(psram_buf), "%zu bytes", psram_size);
-        psram_value = psram_buf;
+        psram_value = format_mb_value(static_cast<uint32_t>(psram_size));
     }
 
-    app::SerialBoxPrinter printer("BOARD INFO");
-    printer.add_body_line(std::string("S/N: ") + serial);
-    printer.add_body_line(std::string("CPU: ") + chip_model_name(chip_info.model) + " (" + std::to_string(chip_info.cores) + " core" + (chip_info.cores > 1 ? "s" : "") + ")");
-    printer.add_body_line(std::string("Rev: ") + std::to_string(chip_info.revision));
-    printer.add_body_line(std::string("Features: ") + chip_features_string(chip_info));
-    printer.add_body_line(std::string("CPU clock: ") + std::to_string(CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ) + " MHz");
-    printer.add_body_line(std::string("Flash: ") + flash_value);
-    printer.add_body_line(std::string("PSRAM: ") + psram_value);
-    printer.add_body_line(std::string("Reset reason: ") + reset_reason_string());
-    printer.add_body_line(std::string("Heap free: ") + std::to_string(esp_get_free_heap_size()) + " bytes");
-    printer.add_body_line(std::string("Heap min free: ") + std::to_string(esp_get_minimum_free_heap_size()) + " bytes");
+    const bool wifi_available = (chip_info.features & CHIP_FEATURE_WIFI_BGN) != 0;
+    const bool bt_available = (chip_info.features & CHIP_FEATURE_BT) != 0;
+    const bool ble_available = (chip_info.features & CHIP_FEATURE_BLE) != 0;
+
+    app::SerialBoxPrinter printer("ESP32-S3 SYSTEM INFORMATION");
+    printer.add_blank_body();
+    printer.add_body_line("DEVICE");
+    printer.add_body_bullet("CPU: " + std::string(chip_model_name(chip_info.model)) + " • " + std::to_string(chip_info.cores) + " Cores", 2U);
+    printer.add_body_bullet("Revision: v" + std::to_string(chip_info.revision), 2U);
+    printer.add_body_bullet("Clock: " + std::to_string(CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ) + " MHz", 2U);
+    printer.add_blank_body();
+    printer.add_body_line("MEMORY");
+    printer.add_body_bullet("Flash: " + flash_value, 2U);
+    printer.add_body_bullet("PSRAM: " + psram_value, 2U);
+    printer.add_body_bullet("Heap: " + format_mb_free(esp_get_free_heap_size()), 2U);
+    printer.add_body_bullet("Min Heap: " + format_mb_free(esp_get_minimum_free_heap_size()), 2U);
+    printer.add_blank_body();
+    printer.add_body_line("CONNECTIVITY");
+    printer.add_body_bullet("Wi-Fi: " + std::string(wifi_available ? "Available" : "Unavailable"), 2U);
+    printer.add_body_bullet(std::string(bt_available || ble_available ? "Bluetooth / BLE" : "Bluetooth / BLE: N/A"), 2U);
+    printer.add_blank_body();
+    printer.add_body_line("SYSTEM");
+    printer.add_body_bullet("Reset: " + reset_reason_string(), 2U);
+    printer.add_blank_body();
+    printer.add_body_line("S/N: " + std::string(serial));
     printer.print();
 }

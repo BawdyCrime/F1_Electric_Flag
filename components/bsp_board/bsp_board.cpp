@@ -112,7 +112,26 @@ esp_err_t bsp_board_init(void) {
         return err;
     }
 
+    if (BSP_SPI_CS_GPIO != GPIO_NUM_NC) {
+        err = bsp_board_configure_gpio(BSP_SPI_CS_GPIO, true, false, false);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "SPI CS GPIO config failed: %s", esp_err_to_name(err));
+            return err;
+        }
+        gpio_set_level(BSP_SPI_CS_GPIO, 1);
+    }
+
+    if (BSP_LCD_BL_GPIO != GPIO_NUM_NC) {
+        err = bsp_board_configure_gpio(BSP_LCD_BL_GPIO, true, false, false);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "LCD backlight GPIO config failed: %s", esp_err_to_name(err));
+            return err;
+        }
+        gpio_set_level(BSP_LCD_BL_GPIO, 0);
+    }
+
     ESP_LOGI(TAG, "I2C bus initialized on SDA=%d, SCL=%d", BSP_I2C_SDA_GPIO, BSP_I2C_SCL_GPIO);
+    ESP_LOGI(TAG, "Board bus idle states set: SPI CS high, LCD backlight off");
     return ESP_OK;
 }
 
@@ -170,6 +189,7 @@ void bsp_board_print_peripheral_summary(void) {
     printer.add_body_bullet("Bus: I2C0", 2U);
     printer.add_body_bullet(std::string("Pins: SDA=") + gpio_label(BSP_I2C_SDA_GPIO) + ", SCL=" + gpio_label(BSP_I2C_SCL_GPIO), 2U);
     printer.add_body_bullet(std::string("Clock: ") + std::to_string(BSP_I2C_CLOCK_HZ) + " Hz, mode=master, pullups=enabled", 2U);
+    printer.add_body_bullet("Host state: master bus created, ready for probe/transaction use", 2U);
     printer.add_body_bullet("Scan targets: PMIC 0x34/0x35, IMU 0x6A/0x6B", 2U);
 
     printer.add_blank_body();
@@ -177,8 +197,9 @@ void bsp_board_print_peripheral_summary(void) {
     printer.add_body_bullet(std::string("Host: ") + std::to_string(static_cast<int>(BSP_SPI_HOST)), 2U);
     printer.add_body_bullet(std::string("Pins: SCLK=") + gpio_label(BSP_SPI_SCLK_GPIO) + ", D0=" + gpio_label(BSP_SPI_QSPI_IO0_GPIO) + ", D1=" + gpio_label(BSP_SPI_QSPI_IO1_GPIO) + ", D2=" + gpio_label(BSP_SPI_QSPI_IO2_GPIO) + ", D3=" + gpio_label(BSP_SPI_QSPI_IO3_GPIO) + ", CS=" + gpio_label(BSP_SPI_CS_GPIO), 2U);
     printer.add_body_bullet(std::string("Clock: ") + std::to_string(BSP_SPI_CLOCK_HZ) + " Hz, format=" + spi_mode_label(0), 2U);
+    printer.add_body_bullet("Idle state: CS high, backlight low, bus ready for display init", 2U);
     printer.add_body_bullet("Mode: 4-wire QSPI LCD bus from legacy ESP32-S3-Touch-LCD-3.5B reference", 2U);
-    printer.add_body_bullet("Status: legacy pin map validated; display bus ready when powered.", 2U);
+    printer.add_body_bullet("Status: board init completed; device scan and display bus initialization still validate the final electrical state.", 2U);
     printer.print();
 }
 

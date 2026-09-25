@@ -21,6 +21,7 @@ extern "C" void app_main(void)
     }
 
     ESP_LOGI(TAG, "Board GPIO layer initialized");
+    bsp_board_print_info();
 
     err = bsp_display_init();
     if (err != ESP_OK) {
@@ -35,7 +36,6 @@ extern "C" void app_main(void)
         ESP_LOGW(TAG, "I2C scan did not detect devices; board power and schematic validation are still required");
     }
 
-    bsp_board_print_info();
     bsp_board_print_peripheral_summary();
 
     err = bsp_pmic_init();
