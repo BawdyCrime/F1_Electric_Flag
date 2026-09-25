@@ -1,5 +1,5 @@
 idf_component_register(
     SRCS "main.cpp"
     INCLUDE_DIRS "."
-    REQUIRES bsp_board bsp_pmic
+    REQUIRES bsp_board bsp_pmic serial_box_printer spi_flash
 )
