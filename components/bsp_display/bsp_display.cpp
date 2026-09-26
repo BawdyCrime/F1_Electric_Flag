@@ -17,7 +17,7 @@ static esp_lcd_panel_handle_t s_panel = nullptr;
 static lv_display_t *s_lvgl_display = nullptr;
 static bool s_spi_bus_initialized = false;
 static bool s_lvgl_initialized = false;
-static constexpr int kLvglDrawBufferRows = 8;
+static constexpr int kLvglDrawBufferRows = BSP_DISPLAY_PANEL_HEIGHT / 4;
 
 #define AXS_INIT_CMD(command, delay, ...) \
     { command, (const uint8_t[]){__VA_ARGS__}, sizeof((const uint8_t[]){__VA_ARGS__}), delay }

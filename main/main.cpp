@@ -81,6 +81,7 @@ extern "C" void app_main(void)
             char label_text[64];
             std::snprintf(label_text, sizeof(label_text), "F1 Electric Flag\nLVGL RGB565: %s", color.name);
             lv_label_set_text(label, label_text);
+            lv_refr_now(lv_display_get_default());
             lvgl_port_unlock();
             vTaskDelay(pdMS_TO_TICKS(700));
         }
