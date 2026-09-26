@@ -74,7 +74,7 @@ i2c_master_bus_handle_t bsp_board_get_i2c_bus_handle(void);
 esp_err_t bsp_board_init(void);
 esp_err_t bsp_board_i2c_scan(void);
 void bsp_board_print_info(void);
-void bsp_board_print_peripheral_summary(void);
+void bsp_board_print_peripheral(void);
 esp_err_t bsp_board_set_backlight(bool enabled);
 esp_err_t bsp_board_set_status_led(bool enabled);
 

@@ -43,14 +43,6 @@ static const bsp_board_config_t s_board_config = {
 
 namespace {
 
-std::string fixed_field(const std::string &value, size_t width) {
-    std::string result = value;
-    if (result.size() < width) {
-        result.append(width - result.size(), ' ');
-    }
-    return result;
-}
-
 std::string gpio_label(gpio_num_t gpio) {
     if (gpio == GPIO_NUM_NC) {
         return "NC";
@@ -58,6 +50,14 @@ std::string gpio_label(gpio_num_t gpio) {
     char buffer[16];
     std::snprintf(buffer, sizeof(buffer), "GPIO%d", static_cast<int>(gpio));
     return buffer;
+}
+
+std::string gpio_state_line(const std::string &name, gpio_num_t gpio, const std::string &state, const std::string &level = "") {
+    std::string line = app::pad_field(name, 12) + app::pad_field(gpio_label(gpio), 10) + app::pad_field(state, 10);
+    if (!level.empty()) {
+        line += level;
+    }
+    return line;
 }
 
 std::string hex_byte(uint8_t value) {
@@ -73,10 +73,8 @@ std::string i2c_devices_summary_string() {
 
     std::string result;
     for (size_t i = 0; i < s_scanned_i2c_devices.size(); ++i) {
-        if (i != 0U) {
-            result += "  ";
-        }
-        result += hex_byte(s_scanned_i2c_devices[i]);
+        const std::string address = hex_byte(s_scanned_i2c_devices[i]);
+        result += (i + 1U < s_scanned_i2c_devices.size()) ? app::pad_field(address, 6U) : address;
     }
     return result;
 }
@@ -107,8 +105,6 @@ static esp_err_t bsp_board_configure_gpio(gpio_num_t gpio, bool output, bool pul
 
 esp_err_t bsp_board_init(void) {
     esp_err_t err = ESP_OK;
-
-    ESP_LOGI(TAG, "Initializing board-level GPIO and I2C validation layer");
 
     err = bsp_board_configure_gpio(BSP_TOUCH_INT_GPIO, false, true, false);
     if (err != ESP_OK) {
@@ -169,8 +165,6 @@ esp_err_t bsp_board_init(void) {
         gpio_set_level(BSP_LCD_BL_GPIO, 0);
     }
 
-    ESP_LOGI(TAG, "I2C bus initialized on SDA=%d, SCL=%d", BSP_I2C_SDA_GPIO, BSP_I2C_SCL_GPIO);
-    ESP_LOGI(TAG, "Board bus idle states set: SPI CS high, LCD backlight off");
     return ESP_OK;
 }
 
@@ -186,8 +180,6 @@ esp_err_t bsp_board_i2c_scan(void) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    ESP_LOGI(TAG, "Scanning I2C bus for board peripherals");
-
     for (uint8_t addr = 0; addr < 0x80; ++addr) {
         esp_err_t err = i2c_master_probe(s_i2c_bus_handle, addr, 1000);
         if (err == ESP_OK) {
@@ -195,12 +187,10 @@ esp_err_t bsp_board_i2c_scan(void) {
             if (std::find(s_scanned_i2c_devices.begin(), s_scanned_i2c_devices.end(), addr) == s_scanned_i2c_devices.end()) {
                 s_scanned_i2c_devices.push_back(addr);
             }
-            ESP_LOGI(TAG, "Detected I2C device at 0x%02X", addr);
         }
     }
 
     if (!found_any) {
-        ESP_LOGW(TAG, "No I2C devices detected. Check board power, pull-ups, and wiring.");
         return ESP_ERR_NOT_FOUND;
     }
 
@@ -209,7 +199,6 @@ esp_err_t bsp_board_i2c_scan(void) {
             if (std::find(s_scanned_i2c_devices.begin(), s_scanned_i2c_devices.end(), pmic_candidates[i]) == s_scanned_i2c_devices.end()) {
                 s_scanned_i2c_devices.push_back(pmic_candidates[i]);
             }
-            ESP_LOGI(TAG, "PMIC candidate detected at 0x%02X", pmic_candidates[i]);
         }
     }
 
@@ -218,7 +207,6 @@ esp_err_t bsp_board_i2c_scan(void) {
             if (std::find(s_scanned_i2c_devices.begin(), s_scanned_i2c_devices.end(), imu_candidates[i]) == s_scanned_i2c_devices.end()) {
                 s_scanned_i2c_devices.push_back(imu_candidates[i]);
             }
-            ESP_LOGI(TAG, "IMU candidate detected at 0x%02X", imu_candidates[i]);
         }
     }
 
@@ -226,19 +214,16 @@ esp_err_t bsp_board_i2c_scan(void) {
     return ESP_OK;
 }
 
-void bsp_board_print_peripheral_summary(void) {
+void bsp_board_print_peripheral(void) {
     const bsp_board_config_t &config = *bsp_board_get_config();
     app::SerialBoxPrinter printer("BOARD PERIPHERALS");
 
     const std::string spi_host_name = (config.spi_host == SPI2_HOST) ? "SPI2" : "SPI1";
-    const std::string touch_int_label = (config.touch_int_gpio == GPIO_NUM_NC) ? "N/A" : gpio_label(config.touch_int_gpio);
-    const std::string touch_rst_label = (config.touch_rst_gpio == GPIO_NUM_NC) ? "N/A" : gpio_label(config.touch_rst_gpio);
-    const std::string status_led_label = (config.status_led_gpio == GPIO_NUM_NC) ? "N/A" : gpio_label(config.status_led_gpio);
-    const std::string backlight_label = (config.lcd_bl_gpio == GPIO_NUM_NC) ? "N/A" : gpio_label(config.lcd_bl_gpio);
     const std::string touch_int_state = (config.touch_int_gpio == GPIO_NUM_NC) ? "—" : "INPUT";
     const std::string touch_rst_state = (config.touch_rst_gpio == GPIO_NUM_NC) ? "—" : "OUTPUT";
     const std::string status_led_state = (config.status_led_gpio == GPIO_NUM_NC) ? "—" : "OUTPUT";
     const std::string backlight_state = (config.lcd_bl_gpio == GPIO_NUM_NC) ? "—" : "OUTPUT";
+    const std::string chip_select_state = (config.spi_cs_gpio == GPIO_NUM_NC) ? "—" : "OUTPUT";
 
     const std::string i2c_clock_hz = std::to_string(config.i2c_clock_hz / 1000U) + " kHz";
     const std::string spi_clock_hz = std::to_string(config.spi_clock_hz / 1000000U) + " MHz";
@@ -247,40 +232,36 @@ void bsp_board_print_peripheral_summary(void) {
     const std::string rtc_addr = hex_byte(config.rtc_i2c_addr);
     const std::string device_list = i2c_devices_summary_string();
 
-    const std::string on_board_label = fixed_field("DISPLAY", 12);
-    const std::string touch_label = fixed_field("TOUCH", 12);
-    const std::string imu_label = fixed_field("IMU", 12);
-    const std::string rtc_label = fixed_field("RTC", 12);
-    const std::string pmic_label = fixed_field("PMIC", 12);
-    const std::string audio_label = fixed_field("AUDIO", 12);
+    const std::string on_board_label = app::pad_field("DISPLAY", 12);
+    const std::string touch_label = app::pad_field("TOUCH", 12);
+    const std::string imu_label = app::pad_field("IMU", 12);
+    const std::string rtc_label = app::pad_field("RTC", 12);
+    const std::string pmic_label = app::pad_field("PMIC", 12);
+    const std::string audio_label = app::pad_field("AUDIO", 12);
 
-    const std::string i2c_bus_label = fixed_field("Bus", 12);
-    const std::string sda_label = fixed_field("SDA", 12);
-    const std::string scl_label = fixed_field("SCL", 12);
-    const std::string clock_label = fixed_field("Clock", 12);
-    const std::string devices_label = fixed_field("Devices", 12);
-    const std::string state_label = fixed_field("State", 12);
+    const std::string i2c_bus_label = app::pad_field("Bus", 12);
+    const std::string sda_label = app::pad_field("SDA", 12);
+    const std::string scl_label = app::pad_field("SCL", 12);
+    const std::string clock_label = app::pad_field("Clock", 12);
+    const std::string devices_label = app::pad_field("Devices", 12);
+    const std::string state_label = app::pad_field("State", 12);
 
-    const std::string display_bus_label = fixed_field("Host", 12);
-    const std::string mode_label = fixed_field("Mode", 12);
-    const std::string d0_label = fixed_field("D0", 12);
-    const std::string d1_label = fixed_field("D1", 12);
-    const std::string d2_label = fixed_field("D2", 12);
-    const std::string d3_label = fixed_field("D3", 12);
-    const std::string cs_label = fixed_field("CS", 12);
-
-    const std::string gpio_label_1 = fixed_field("LCD BL", 12);
-    const std::string gpio_label_2 = fixed_field("TOUCH INT", 12);
-    const std::string gpio_label_3 = fixed_field("TOUCH RST", 12);
-    const std::string gpio_label_4 = fixed_field("STATUS LED", 12);
+    const std::string display_bus_label = app::pad_field("Host", 12);
+    const std::string mode_label = app::pad_field("Mode", 12);
+    const std::string d0_label = app::pad_field("D0", 12);
+    const std::string d1_label = app::pad_field("D1", 12);
+    const std::string d2_label = app::pad_field("D2", 12);
+    const std::string d3_label = app::pad_field("D3", 12);
+    const std::string cs_label = app::pad_field("CS", 12);
 
     printer.add_body_line("ONBOARD");
-    printer.add_body_bullet(on_board_label + fixed_field("AXS15231B", 16) + fixed_field("QSPI", 8), 2U);
-    printer.add_body_bullet(touch_label + fixed_field("AXS15231B", 16) + fixed_field("I2C", 8), 2U);
-    printer.add_body_bullet(imu_label + fixed_field("QMI8658", 16) + fixed_field("I2C", 8) + imu_addr, 2U);
-    printer.add_body_bullet(rtc_label + fixed_field("PCF85063", 16) + fixed_field("I2C", 8) + rtc_addr, 2U);
-    printer.add_body_bullet(pmic_label + fixed_field("AXP2101", 16) + fixed_field("I2C", 8) + pmic_addrs, 2U);
-    printer.add_body_bullet(audio_label + fixed_field("ES8311", 16) + fixed_field("I2C", 8), 2U);
+    printer.add_body_bullet(on_board_label + app::pad_field("AXS15231B", 16) + app::pad_field("QSPI", 8), 2U);
+    printer.add_body_bullet(touch_label + app::pad_field("AXS15231B", 16) + app::pad_field("I2C", 8), 2U);
+    printer.add_body_bullet(imu_label + app::pad_field("QMI8658", 16) + app::pad_field("I2C", 8) + imu_addr, 2U);
+    printer.add_body_bullet(rtc_label + app::pad_field("PCF85063", 16) + app::pad_field("I2C", 8) + rtc_addr, 2U);
+    printer.add_body_bullet(pmic_label + app::pad_field("AXP2101", 16) + app::pad_field("I2C", 8) + pmic_addrs, 2U);
+    printer.add_body_bullet(audio_label + app::pad_field("ES8311", 16) + app::pad_field("I2C", 8), 2U);
+    printer.add_body_bullet(app::pad_field("AUDIO I2S", 12) + "NOT CONFIGURED", 2U);
 
     printer.add_blank_body();
     printer.add_body_line("I2C BUS");
@@ -292,7 +273,7 @@ void bsp_board_print_peripheral_summary(void) {
     printer.add_body_bullet(state_label + "READY", 2U);
 
     printer.add_blank_body();
-    printer.add_body_line("DISPLAY BUS");
+    printer.add_body_line("SPI BUS");
     printer.add_body_bullet(display_bus_label + spi_host_name, 2U);
     printer.add_body_bullet(mode_label + "QSPI", 2U);
     printer.add_body_bullet(clock_label + spi_clock_hz, 2U);
@@ -304,17 +285,20 @@ void bsp_board_print_peripheral_summary(void) {
 
     printer.add_blank_body();
     printer.add_body_line("GPIO");
-    printer.add_body_bullet(gpio_label_1 + fixed_field(backlight_label, 8) + backlight_state, 2U);
-    printer.add_body_bullet(gpio_label_2 + fixed_field(touch_int_label, 8) + touch_int_state, 2U);
-    printer.add_body_bullet(gpio_label_3 + fixed_field(touch_rst_label, 8) + touch_rst_state, 2U);
-    printer.add_body_bullet(gpio_label_4 + fixed_field(status_led_label, 8) + status_led_state, 2U);
+    printer.add_body_bullet(gpio_state_line("SPI CS", config.spi_cs_gpio, chip_select_state,
+                                            config.spi_cs_gpio == GPIO_NUM_NC ? "" : "HIGH"), 2U);
+    printer.add_body_bullet(gpio_state_line("LCD BL", config.lcd_bl_gpio, backlight_state,
+                                            config.lcd_bl_gpio == GPIO_NUM_NC ? "" : "LOW"), 2U);
+    printer.add_body_bullet(gpio_state_line("TOUCH INT", config.touch_int_gpio, touch_int_state), 2U);
+    printer.add_body_bullet(gpio_state_line("TOUCH RST", config.touch_rst_gpio, touch_rst_state,
+                                            config.touch_rst_gpio == GPIO_NUM_NC ? "" : "HIGH"), 2U);
+    printer.add_body_bullet(gpio_state_line("STATUS LED", config.status_led_gpio, status_led_state), 2U);
 
     printer.print();
 }
 
 esp_err_t bsp_board_set_backlight(bool enabled) {
     if (BSP_LCD_BL_GPIO == GPIO_NUM_NC) {
-        ESP_LOGW(TAG, "Backlight GPIO not configured; board pin map must be confirmed from schematic before enabling panel power.");
         return ESP_OK;
     }
 
@@ -323,7 +307,6 @@ esp_err_t bsp_board_set_backlight(bool enabled) {
         return err;
     }
     gpio_set_level(BSP_LCD_BL_GPIO, enabled ? 1 : 0);
-    ESP_LOGI(TAG, "Backlight %s", enabled ? "enabled" : "disabled");
     return ESP_OK;
 }
 
@@ -337,6 +320,5 @@ esp_err_t bsp_board_set_status_led(bool enabled) {
         return err;
     }
     gpio_set_level(BSP_STATUS_LED_GPIO, enabled ? 1 : 0);
-    ESP_LOGI(TAG, "Status LED %s", enabled ? "enabled" : "disabled");
     return ESP_OK;
 }

@@ -8,6 +8,7 @@
 #include "esp_lcd_panel_vendor.h"
 
 #include "bsp_board.h"
+#include "serial_box_printer.h"
 
 static const char *TAG = "bsp_display";
 static esp_lcd_panel_io_handle_t s_panel_io = nullptr;
@@ -100,14 +101,14 @@ esp_err_t bsp_display_init(void) {
         return err;
     }
 
-    ESP_LOGI(TAG, "AXS15231B display initialized and backlight enabled on host=%d, SCLK=%d, D0..D3=%d/%d/%d/%d, CS=%d",
-             BSP_SPI_HOST,
-             BSP_SPI_SCLK_GPIO,
-             BSP_SPI_QSPI_IO0_GPIO,
-             BSP_SPI_QSPI_IO1_GPIO,
-             BSP_SPI_QSPI_IO2_GPIO,
-             BSP_SPI_QSPI_IO3_GPIO,
-             BSP_SPI_CS_GPIO);
+    char display_info[128];
+    std::snprintf(display_info, sizeof(display_info), "Host=%d, SCLK=%d, D0..D3=%d/%d/%d/%d, CS=%d",
+                  BSP_SPI_HOST, BSP_SPI_SCLK_GPIO, BSP_SPI_QSPI_IO0_GPIO, BSP_SPI_QSPI_IO1_GPIO,
+                  BSP_SPI_QSPI_IO2_GPIO, BSP_SPI_QSPI_IO3_GPIO, BSP_SPI_CS_GPIO);
+    app::SerialBoxPrinter printer("DISPLAY STATUS");
+    printer.add_body_bullet("AXS15231B initialized; backlight enabled", 2U);
+    printer.add_body_bullet(display_info, 2U);
+    printer.print();
     return ESP_OK;
 }
 
@@ -138,17 +139,14 @@ esp_err_t bsp_display_deinit(void) {
         ESP_LOGE(TAG, "Display deinit failed: %s", esp_err_to_name(first_err));
         return first_err;
     }
-    ESP_LOGI(TAG, "Display deinitialized.");
     return ESP_OK;
 }
 
 esp_err_t bsp_display_set_backlight(bool enabled) {
-    ESP_LOGI(TAG, "Display backlight %s", enabled ? "enabled" : "disabled");
     return bsp_board_set_backlight(enabled);
 }
 
 esp_err_t bsp_display_set_rotation(uint16_t rotation) {
     (void)rotation;
-    ESP_LOGI(TAG, "Display rotation set to %u (panel driver not yet initialized)", static_cast<unsigned>(rotation));
     return ESP_OK;
 }

@@ -1,5 +1,5 @@
 idf_component_register(
     SRCS "bsp_imu.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES esp_common esp_driver_i2c
+    REQUIRES esp_common esp_driver_i2c serial_box_printer
 )

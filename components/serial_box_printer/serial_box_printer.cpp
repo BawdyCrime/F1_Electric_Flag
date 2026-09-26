@@ -108,6 +108,14 @@ std::string close_line(size_t width) {
 
 }  // namespace
 
+std::string pad_field(const std::string& value, std::size_t width) {
+    const size_t display_width = utf8_display_width(value);
+    if (display_width >= width) {
+        return value;
+    }
+    return value + std::string(width - display_width, ' ');
+}
+
 SerialBoxPrinter::SerialBoxPrinter(const std::string& title)
     : title_(title), width_(std::max(utf8_display_width(title), 48U)) {}
 

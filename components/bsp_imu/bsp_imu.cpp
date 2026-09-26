@@ -1,16 +1,18 @@
 #include "bsp_imu.h"
 
-#include "esp_log.h"
-
-static const char *TAG = "bsp_imu";
+#include "serial_box_printer.h"
 
 esp_err_t bsp_imu_init(void) {
-    ESP_LOGW(TAG, "IMU init is staged pending chip identification and register map validation from the schematic.");
+    app::SerialBoxPrinter printer("IMU STATUS");
+    printer.add_body_line("Initialization staged pending chip identification and schematic register-map validation");
+    printer.print();
     return ESP_OK;
 }
 
 esp_err_t bsp_imu_deinit(void) {
-    ESP_LOGI(TAG, "IMU deinit placeholder called.");
+    app::SerialBoxPrinter printer("IMU STATUS");
+    printer.add_body_line("Deinitialize placeholder called");
+    printer.print();
     return ESP_OK;
 }
 
@@ -25,6 +27,8 @@ esp_err_t bsp_imu_read(bsp_imu_data_t *data) {
     data->gx = 0.0f;
     data->gy = 0.0f;
     data->gz = 0.0f;
-    ESP_LOGI(TAG, "IMU read placeholder: sensor not yet validated on hardware.");
+    app::SerialBoxPrinter printer("IMU STATUS");
+    printer.add_body_line("Read placeholder; sensor not validated on hardware");
+    printer.print();
     return ESP_OK;
 }

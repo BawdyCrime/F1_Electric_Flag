@@ -1,9 +1,12 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
 namespace app {
+
+std::string pad_field(const std::string& value, std::size_t width);
 
 class SerialBoxPrinter {
 public:

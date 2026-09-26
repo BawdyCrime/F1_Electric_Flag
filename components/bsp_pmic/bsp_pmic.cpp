@@ -86,14 +86,6 @@ static esp_err_t bsp_pmic_set_voltage(uint8_t reg, uint16_t min_mv, uint16_t max
     return bsp_pmic_write_reg(reg, value);
 }
 
-static std::string fixed_field(const std::string &value, size_t width) {
-    std::string result = value;
-    if (result.size() < width) {
-        result.append(width - result.size(), ' ');
-    }
-    return result;
-}
-
 static std::string pmic_yes_no(bool value) {
     return value ? "YES" : "NO";
 }
@@ -113,18 +105,7 @@ static std::string pmic_charge_state(uint8_t status2) {
 }
 
 static std::string pmic_rail_state_line(const std::string &name, const std::string &voltage, bool enabled) {
-    return fixed_field(name, 10) + fixed_field(voltage, 8) + fixed_field(enabled ? "ON" : "OFF", 6);
-}
-
-static esp_err_t bsp_pmic_apply_initial_power_sequence(void) {
-    ESP_LOGI(TAG, "PMIC safe sequence (legacy reference):");
-    ESP_LOGI(TAG, "  Stage 0: VBUS limit=4.36V, I_LIMIT=1500mA, VSYS shutdown=2600mV");
-    ESP_LOGI(TAG, "  Stage 1: core rails = DC1 3.3V, DC3 3.3V, ALDO1 1.8V");
-    ESP_LOGI(TAG, "  Stage 2: board rails = DC2 1.0V, DC4 1.0V, DC5 3.3V");
-    ESP_LOGI(TAG, "  Stage 3: analog rails = ALDO2 3.3V, ALDO3 3.3V, ALDO4 3.3V");
-    ESP_LOGI(TAG, "  Stage 4: secondary rails = BLDO1 1.5V, BLDO2 2.8V, CPUSLDO 1.0V, DLDO1 3.3V, DLDO2 3.3V");
-    ESP_LOGI(TAG, "  Rail enable remains intentionally disabled until the board power topology is confirmed.");
-    return ESP_OK;
+    return app::pad_field(name, 10) + app::pad_field(voltage, 8) + app::pad_field(enabled ? "ON" : "OFF", 6);
 }
 
 esp_err_t bsp_pmic_init(void) {
@@ -164,17 +145,6 @@ esp_err_t bsp_pmic_init(void) {
         return err;
     }
 
-    if (chip_id != 0x4A) {
-        ESP_LOGW(TAG, "AXP2101 chip ID mismatch: expected 0x4A, got 0x%02X", chip_id);
-    }
-
-    err = bsp_pmic_apply_initial_power_sequence();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "PMIC init config failed: %s", esp_err_to_name(err));
-        return err;
-    }
-
-    ESP_LOGI(TAG, "PMIC validated: chip_id=0x%02X status1=0x%02X status2=0x%02X", chip_id, status1, status2);
     s_pmic_initialized = true;
     return ESP_OK;
 }
@@ -185,7 +155,6 @@ esp_err_t bsp_pmic_deinit(void) {
         s_pmic_dev_handle = NULL;
     }
     s_pmic_initialized = false;
-    ESP_LOGI(TAG, "PMIC deinit complete");
     return ESP_OK;
 }
 
@@ -193,8 +162,7 @@ void bsp_pmic_print_status(void) {
     app::SerialBoxPrinter printer("PMIC STATUS");
 
     if (s_pmic_dev_handle == NULL) {
-        printer.add_body_line("PMIC: NOT INIT");
-        printer.print();
+        ESP_LOGE(TAG, "Cannot print PMIC status before initialization");
         return;
     }
 
@@ -203,8 +171,7 @@ void bsp_pmic_print_status(void) {
     uint8_t chip_id = 0;
     esp_err_t err = bsp_pmic_read_status(&status1, &status2, &chip_id);
     if (err != ESP_OK) {
-        printer.add_body_line("PMIC: READ FAIL");
-        printer.print();
+        ESP_LOGE(TAG, "PMIC status readback failed: %s", esp_err_to_name(err));
         return;
     }
 
@@ -215,19 +182,22 @@ void bsp_pmic_print_status(void) {
     std::snprintf(status1_buf, sizeof(status1_buf), "0x%02X", status1);
     std::snprintf(status2_buf, sizeof(status2_buf), "0x%02X", status2);
 
-    printer.add_body_line(fixed_field("CHIP", 12) + chip_buf);
-    printer.add_body_line(fixed_field("STATUS1", 12) + status1_buf);
-    printer.add_body_line(fixed_field("STATUS2", 12) + status2_buf);
+    printer.add_body_line(app::pad_field("CHIP", 12) + chip_buf);
+    printer.add_body_line(app::pad_field("STATUS1", 12) + status1_buf);
+    printer.add_body_line(app::pad_field("STATUS2", 12) + status2_buf);
+    if (chip_id != 0x4A) {
+        printer.add_body_line("WARNING: unexpected AXP2101 chip ID");
+    }
     
     printer.add_blank_body();
     printer.add_body_line("STATE");
-    printer.add_body_bullet(fixed_field("VBUS_GOOD", 18) + pmic_yes_no((status1 & (1u << 5)) != 0u), 2U);
-    printer.add_body_bullet(fixed_field("BAT_CONNECTED", 18) + pmic_yes_no((status1 & (1u << 3)) != 0u), 2U);
-    printer.add_body_bullet(fixed_field("CHARGE_STATE", 18) + pmic_charge_state(status2), 2U);
-    printer.add_body_bullet(fixed_field("POWER_STATE", 18) + pmic_yes_no((status2 & (1u << 4)) != 0u), 2U);
-    printer.add_body_bullet(fixed_field("VBUS_INPUT", 18) + pmic_yes_no((status2 & (1u << 3)) == 0u), 2U);
-    printer.add_body_bullet(fixed_field("CURRENT_LIMIT", 18) + pmic_yes_no((status1 & 0x01u) != 0u), 2U);
-    printer.add_body_bullet(fixed_field("THERMAL_REG", 18) + pmic_yes_no((status1 & 0x02u) != 0u), 2U);
+    printer.add_body_bullet(app::pad_field("VBUS_GOOD", 18) + pmic_yes_no((status1 & (1u << 5)) != 0u), 2U);
+    printer.add_body_bullet(app::pad_field("BAT_CONNECTED", 18) + pmic_yes_no((status1 & (1u << 3)) != 0u), 2U);
+    printer.add_body_bullet(app::pad_field("CHARGE_STATE", 18) + pmic_charge_state(status2), 2U);
+    printer.add_body_bullet(app::pad_field("POWER_STATE", 18) + pmic_yes_no((status2 & (1u << 4)) != 0u), 2U);
+    printer.add_body_bullet(app::pad_field("VBUS_INPUT", 18) + pmic_yes_no((status2 & (1u << 3)) == 0u), 2U);
+    printer.add_body_bullet(app::pad_field("CURRENT_LIMIT", 18) + pmic_yes_no((status1 & 0x01u) != 0u), 2U);
+    printer.add_body_bullet(app::pad_field("THERMAL_REG", 18) + pmic_yes_no((status1 & 0x02u) != 0u), 2U);
     
     printer.add_blank_body();
     printer.add_body_line("RAILS");
@@ -245,6 +215,15 @@ void bsp_pmic_print_status(void) {
     printer.add_body_bullet(pmic_rail_state_line("CPUSLDO", "1.0V", false), 2U);
     printer.add_body_bullet(pmic_rail_state_line("DLDO1", "3.3V", false), 2U);
     printer.add_body_bullet(pmic_rail_state_line("DLDO2", "3.3V", false), 2U);
+
+    printer.add_blank_body();
+    printer.add_body_line("INITIAL POWER SEQUENCE (REFERENCE ONLY)");
+    printer.add_body_bullet("Stage 0: VBUS limit=4.36V, I_LIMIT=1500mA, VSYS shutdown=2600mV", 2U);
+    printer.add_body_bullet("Stage 1: core rails = DC1, DC3, ALDO1", 2U);
+    printer.add_body_bullet("Stage 2: board rails = DC2, DC4, DC5", 2U);
+    printer.add_body_bullet("Stage 3: analog rails = ALDO2, ALDO3, ALDO4", 2U);
+    printer.add_body_bullet("Stage 4: secondary rails = BLDO1, BLDO2, CPUSLDO, DLDO1, DLDO2", 2U);
+    printer.add_body_bullet("Rail writes remain disabled until board power topology is confirmed", 2U);
     
     printer.print();
 }
@@ -273,17 +252,17 @@ esp_err_t bsp_pmic_read_status(uint8_t *status1, uint8_t *status2, uint8_t *chip
 
 esp_err_t bsp_pmic_enable_rails(bool enable) {
     if (enable) {
-        ESP_LOGW(TAG, "Legacy AXP2101 enable order (safe staged list only, not applied automatically):");
-        ESP_LOGW(TAG, "  1) DC2 -> DC3 -> DC4 -> DC5");
-        ESP_LOGW(TAG, "  2) ALDO1 -> ALDO2 -> ALDO3 -> ALDO4");
-        ESP_LOGW(TAG, "  3) BLDO1 -> BLDO2 -> CPUSLDO");
-        ESP_LOGW(TAG, "  4) DLDO1 -> DLDO2");
-        ESP_LOGW(TAG, "  DC1 is kept out of the enable sequence in the legacy example and remains disabled here.");
-        ESP_LOGW(TAG, "  Actual rail writes remain disabled until the board sequencing is confirmed on hardware.");
+        app::SerialBoxPrinter printer("PMIC RAIL SEQUENCE");
+        printer.add_body_bullet("Legacy staged order; not applied automatically", 2U);
+        printer.add_body_bullet("1) DC2 -> DC3 -> DC4 -> DC5", 2U);
+        printer.add_body_bullet("2) ALDO1 -> ALDO2 -> ALDO3 -> ALDO4", 2U);
+        printer.add_body_bullet("3) BLDO1 -> BLDO2 -> CPUSLDO", 2U);
+        printer.add_body_bullet("4) DLDO1 -> DLDO2", 2U);
+        printer.add_body_bullet("DC1 remains disabled; confirm board sequencing before rail writes", 2U);
+        printer.print();
         return ESP_OK;
     }
 
-    ESP_LOGI(TAG, "PMIC rail enable remains disabled until the board sequencing is confirmed.");
     return ESP_OK;
 }
 
@@ -292,6 +271,5 @@ esp_err_t bsp_pmic_set_backlight_enable(bool enable) {
     if (err != ESP_OK) {
         return err;
     }
-    ESP_LOGI(TAG, "Backlight control %s via board GPIO and PMIC rail state", enable ? "enabled" : "disabled");
     return ESP_OK;
 }
