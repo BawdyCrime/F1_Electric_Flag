@@ -3,3 +3,8 @@ dependencies:
     git: https://github.com/espressif/esp-iot-solution.git
     path: components/display/lcd/esp_lcd_axs15231b
     version: e8ae944284047eb1a3a89e2538dd35f487396fa6
+  espressif/esp_lvgl_port:
+    version: "^2.9.0"
+  lvgl/lvgl:
+    version: "^9"
+    public: true

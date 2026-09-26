@@ -1,12 +1,12 @@
 #include "bsp_display.h"
 
 #include "esp_log.h"
-#include "esp_heap_caps.h"
 #include "driver/spi_master.h"
 #include "esp_lcd_axs15231b.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
+#include "esp_lvgl_port.h"
 
 #include "bsp_board.h"
 #include "serial_box_printer.h"
@@ -14,8 +14,10 @@
 static const char *TAG = "bsp_display";
 static esp_lcd_panel_io_handle_t s_panel_io = nullptr;
 static esp_lcd_panel_handle_t s_panel = nullptr;
+static lv_display_t *s_lvgl_display = nullptr;
 static bool s_spi_bus_initialized = false;
-static constexpr int kFillStripeRows = 8;
+static bool s_lvgl_initialized = false;
+static constexpr int kLvglDrawBufferRows = 8;
 
 #define AXS_INIT_CMD(command, delay, ...) \
     { command, (const uint8_t[]){__VA_ARGS__}, sizeof((const uint8_t[]){__VA_ARGS__}), delay }
@@ -70,7 +72,7 @@ esp_err_t bsp_display_init(void) {
     bus_cfg.data1_io_num = BSP_SPI_QSPI_IO1_GPIO;
     bus_cfg.data2_io_num = BSP_SPI_QSPI_IO2_GPIO;
     bus_cfg.data3_io_num = BSP_SPI_QSPI_IO3_GPIO;
-    bus_cfg.max_transfer_sz = BSP_DISPLAY_PANEL_WIDTH * kFillStripeRows * sizeof(uint16_t);
+    bus_cfg.max_transfer_sz = BSP_DISPLAY_PANEL_WIDTH * kLvglDrawBufferRows * sizeof(uint16_t);
 
     esp_err_t err = spi_bus_initialize(BSP_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
     if (err != ESP_OK) {
@@ -159,7 +161,25 @@ esp_err_t bsp_display_init(void) {
 }
 
 esp_err_t bsp_display_deinit(void) {
-    esp_err_t first_err = bsp_display_set_backlight(false);
+    esp_err_t first_err = ESP_OK;
+    if (s_lvgl_display != nullptr) {
+        esp_err_t err = lvgl_port_remove_disp(s_lvgl_display);
+        if (first_err == ESP_OK && err != ESP_OK) {
+            first_err = err;
+        }
+        s_lvgl_display = nullptr;
+    }
+    if (s_lvgl_initialized) {
+        esp_err_t err = lvgl_port_deinit();
+        if (first_err == ESP_OK && err != ESP_OK) {
+            first_err = err;
+        }
+        s_lvgl_initialized = false;
+    }
+    esp_err_t backlight_err = bsp_display_set_backlight(false);
+    if (first_err == ESP_OK && backlight_err != ESP_OK) {
+        first_err = backlight_err;
+    }
     if (s_panel != nullptr) {
         esp_err_t err = esp_lcd_panel_del(s_panel);
         if (first_err == ESP_OK && err != ESP_OK) {
@@ -192,40 +212,52 @@ esp_err_t bsp_display_set_backlight(bool enabled) {
     return bsp_board_set_backlight(enabled);
 }
 
-esp_err_t bsp_display_fill_color(uint16_t rgb565_color) {
-    if (s_panel == nullptr) {
+esp_err_t bsp_display_lvgl_init(void) {
+    if (s_lvgl_display != nullptr) {
+        return ESP_OK;
+    }
+    if (s_panel == nullptr || s_panel_io == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    const size_t stripe_pixels = BSP_DISPLAY_PANEL_WIDTH * kFillStripeRows;
-    uint16_t *stripe = static_cast<uint16_t *>(heap_caps_malloc(
-        stripe_pixels * sizeof(uint16_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
-    if (stripe == nullptr) {
-        ESP_LOGE(TAG, "Failed to allocate %u-byte DMA display stripe",
-                 static_cast<unsigned>(stripe_pixels * sizeof(uint16_t)));
-        return ESP_ERR_NO_MEM;
+    const lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
+    esp_err_t err = lvgl_port_init(&lvgl_cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "LVGL port init failed: %s", esp_err_to_name(err));
+        return err;
     }
+    s_lvgl_initialized = true;
 
-    for (size_t i = 0; i < stripe_pixels; ++i) {
-        stripe[i] = rgb565_color;
+    const lvgl_port_display_cfg_t display_cfg = {
+        .io_handle = s_panel_io,
+        .panel_handle = s_panel,
+        .control_handle = nullptr,
+        .buffer_size = BSP_DISPLAY_PANEL_WIDTH * kLvglDrawBufferRows,
+        .double_buffer = true,
+        .trans_size = 0,
+        .hres = BSP_DISPLAY_PANEL_WIDTH,
+        .vres = BSP_DISPLAY_PANEL_HEIGHT,
+        .monochrome = false,
+        .rotation = {},
+        .rounder_cb = nullptr,
+        .color_format = LV_COLOR_FORMAT_RGB565,
+        .flags = {
+            .buff_dma = true,
+            .buff_spiram = false,
+            .sw_rotate = false,
+            .swap_bytes = true,
+            .full_refresh = false,
+            .direct_mode = false,
+        },
+    };
+    s_lvgl_display = lvgl_port_add_disp(&display_cfg);
+    if (s_lvgl_display == nullptr) {
+        ESP_LOGE(TAG, "LVGL display registration failed");
+        lvgl_port_deinit();
+        s_lvgl_initialized = false;
+        return ESP_FAIL;
     }
-
-    esp_err_t err = ESP_OK;
-    for (int y = 0; y < BSP_DISPLAY_PANEL_HEIGHT; y += kFillStripeRows) {
-        const int y_end = (y + kFillStripeRows < BSP_DISPLAY_PANEL_HEIGHT)
-                              ? y + kFillStripeRows
-                              : BSP_DISPLAY_PANEL_HEIGHT;
-        err = esp_lcd_panel_draw_bitmap(s_panel, 0, y, BSP_DISPLAY_PANEL_WIDTH, y_end, stripe);
-        if (err == ESP_OK) {
-            err = esp_lcd_panel_io_tx_param(s_panel_io, -1, nullptr, 0);
-        }
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "LCD fill failed at row %d: %s", y, esp_err_to_name(err));
-            break;
-        }
-    }
-    heap_caps_free(stripe);
-    return err;
+    return ESP_OK;
 }
 
 esp_err_t bsp_display_set_rotation(uint16_t rotation) {
