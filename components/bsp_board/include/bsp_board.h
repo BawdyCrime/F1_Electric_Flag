@@ -42,6 +42,34 @@ extern "C" {
 #define BSP_SPI_QSPI_IO3_GPIO GPIO_NUM_4
 #define BSP_SPI_CLOCK_HZ      40000000u
 
+typedef struct {
+    i2c_port_t i2c_port;
+    gpio_num_t i2c_sda_gpio;
+    gpio_num_t i2c_scl_gpio;
+    uint32_t i2c_clock_hz;
+    gpio_num_t status_led_gpio;
+    gpio_num_t touch_int_gpio;
+    gpio_num_t touch_rst_gpio;
+    gpio_num_t lcd_bl_gpio;
+
+    spi_host_device_t spi_host;
+    gpio_num_t spi_sclk_gpio;
+    gpio_num_t spi_mosi_gpio;
+    gpio_num_t spi_miso_gpio;
+    gpio_num_t spi_cs_gpio;
+    gpio_num_t spi_qspi_io0_gpio;
+    gpio_num_t spi_qspi_io1_gpio;
+    gpio_num_t spi_qspi_io2_gpio;
+    gpio_num_t spi_qspi_io3_gpio;
+    uint32_t spi_clock_hz;
+
+    uint8_t pmic_i2c_addr_1;
+    uint8_t pmic_i2c_addr_2;
+    uint8_t imu_i2c_addr;
+    uint8_t rtc_i2c_addr;
+} bsp_board_config_t;
+
+const bsp_board_config_t *bsp_board_get_config(void);
 i2c_master_bus_handle_t bsp_board_get_i2c_bus_handle(void);
 esp_err_t bsp_board_init(void);
 esp_err_t bsp_board_i2c_scan(void);
