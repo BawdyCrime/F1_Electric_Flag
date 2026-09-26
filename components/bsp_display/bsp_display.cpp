@@ -15,6 +15,7 @@ static const char *TAG = "bsp_display";
 static esp_lcd_panel_io_handle_t s_panel_io = nullptr;
 static esp_lcd_panel_handle_t s_panel = nullptr;
 static bool s_spi_bus_initialized = false;
+static constexpr int kFillStripeRows = 8;
 
 #define AXS_INIT_CMD(command, delay, ...) \
     { command, (const uint8_t[]){__VA_ARGS__}, sizeof((const uint8_t[]){__VA_ARGS__}), delay }
@@ -69,7 +70,7 @@ esp_err_t bsp_display_init(void) {
     bus_cfg.data1_io_num = BSP_SPI_QSPI_IO1_GPIO;
     bus_cfg.data2_io_num = BSP_SPI_QSPI_IO2_GPIO;
     bus_cfg.data3_io_num = BSP_SPI_QSPI_IO3_GPIO;
-    bus_cfg.max_transfer_sz = BSP_DISPLAY_PANEL_WIDTH * BSP_DISPLAY_PANEL_HEIGHT * sizeof(uint16_t);
+    bus_cfg.max_transfer_sz = BSP_DISPLAY_PANEL_WIDTH * kFillStripeRows * sizeof(uint16_t);
 
     esp_err_t err = spi_bus_initialize(BSP_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
     if (err != ESP_OK) {
@@ -196,28 +197,34 @@ esp_err_t bsp_display_fill_color(uint16_t rgb565_color) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    const size_t pixel_count = BSP_DISPLAY_PANEL_WIDTH * BSP_DISPLAY_PANEL_HEIGHT;
-    uint16_t *framebuffer = static_cast<uint16_t *>(heap_caps_malloc(
-        pixel_count * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    if (framebuffer == nullptr) {
-        ESP_LOGE(TAG, "Failed to allocate %u-byte display test frame", static_cast<unsigned>(pixel_count * sizeof(uint16_t)));
+    const size_t stripe_pixels = BSP_DISPLAY_PANEL_WIDTH * kFillStripeRows;
+    uint16_t *stripe = static_cast<uint16_t *>(heap_caps_malloc(
+        stripe_pixels * sizeof(uint16_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
+    if (stripe == nullptr) {
+        ESP_LOGE(TAG, "Failed to allocate %u-byte DMA display stripe",
+                 static_cast<unsigned>(stripe_pixels * sizeof(uint16_t)));
         return ESP_ERR_NO_MEM;
     }
 
-    for (size_t i = 0; i < pixel_count; ++i) {
-        framebuffer[i] = rgb565_color;
+    for (size_t i = 0; i < stripe_pixels; ++i) {
+        stripe[i] = rgb565_color;
     }
 
-    esp_err_t err = esp_lcd_panel_draw_bitmap(s_panel, 0, 0,
-                                               BSP_DISPLAY_PANEL_WIDTH, BSP_DISPLAY_PANEL_HEIGHT,
-                                               framebuffer);
-    if (err == ESP_OK) {
-        err = esp_lcd_panel_io_tx_param(s_panel_io, -1, nullptr, 0);
+    esp_err_t err = ESP_OK;
+    for (int y = 0; y < BSP_DISPLAY_PANEL_HEIGHT; y += kFillStripeRows) {
+        const int y_end = (y + kFillStripeRows < BSP_DISPLAY_PANEL_HEIGHT)
+                              ? y + kFillStripeRows
+                              : BSP_DISPLAY_PANEL_HEIGHT;
+        err = esp_lcd_panel_draw_bitmap(s_panel, 0, y, BSP_DISPLAY_PANEL_WIDTH, y_end, stripe);
+        if (err == ESP_OK) {
+            err = esp_lcd_panel_io_tx_param(s_panel_io, -1, nullptr, 0);
+        }
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "LCD fill failed at row %d: %s", y, esp_err_to_name(err));
+            break;
+        }
     }
-    heap_caps_free(framebuffer);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "LCD fill failed: %s", esp_err_to_name(err));
-    }
+    heap_caps_free(stripe);
     return err;
 }
 
