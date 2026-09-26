@@ -1,0 +1,5 @@
+dependencies:
+  espressif/esp_lcd_axs15231b:
+    git: https://github.com/espressif/esp-iot-solution.git
+    path: components/display/lcd/esp_lcd_axs15231b
+    version: e8ae944284047eb1a3a89e2538dd35f487396fa6

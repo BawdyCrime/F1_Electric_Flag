@@ -13,7 +13,7 @@ This project is using:
 - LVGL and ESP-IDF official drivers where available
 
 The temporary reference repo cloned for inspection is:
-- /tmp/ESP32-S3-Touch-LCD-3.5
+- .old_version
 
 That repo is useful as a hardware stack reference only. The final BSP should be based on the actual board schematic and current ESP-IDF APIs, not on outdated vendor code.
 
