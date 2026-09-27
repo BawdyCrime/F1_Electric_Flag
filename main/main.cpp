@@ -4,6 +4,7 @@
 #include "bsp_display.h"
 #include "bsp_pmic.h"
 #include "bsp_touch.h"
+#include "flag_display.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "serial_box_printer.h"
@@ -12,19 +13,12 @@
 
 static const char *TAG = "main";
 
-static void touch_color_task(void *arg)
+static void flag_stage_task(void *arg)
 {
     (void)arg;
-    constexpr uint32_t test_colors[] = {
-        0xFF0000,
-        0x00FF00,
-        0x0000FF,
-        0xFFFFFF,
-        0x000000,
-    };
-    constexpr const char *color_names[] = {"RED", "GREEN", "BLUE", "WHITE", "BLACK"};
-    constexpr size_t color_count = sizeof(test_colors) / sizeof(test_colors[0]);
-    size_t color_index = color_count - 1U;
+    constexpr flag_screen_t stages[] = {FLAG_SCREEN_LAP, FLAG_SCREEN_GREEN, FLAG_SCREEN_YELLOW, FLAG_SCREEN_DOUBLE_YELLOW};
+    constexpr const char *stage_names[] = {"LAP", "GREEN FLAG", "YELLOW FLAG", "DOUBLE YELLOW FLAG"};
+    constexpr size_t stage_count = sizeof(stages) / sizeof(stages[0]);
     bool previous_pressed = false;
 
     while (true) {
@@ -37,14 +31,39 @@ static void touch_color_task(void *arg)
         }
 
         if (point.pressed && !previous_pressed) {
-            color_index = (color_index + 1U) % color_count;
-            err = bsp_display_set_solid_color(test_colors[color_index]);
+            // Look up the live stage (it may have changed internally, e.g. green auto-revert) before advancing.
+            flag_screen_t current = flag_display_get_current_screen();
+            size_t current_index = 0;
+            for (size_t i = 0; i < stage_count; ++i) {
+                if (stages[i] == current) {
+                    current_index = i;
+                    break;
+                }
+            }
+            size_t stage_index = (current_index + 1U) % stage_count;
+            switch (stages[stage_index]) {
+                case FLAG_SCREEN_LAP:
+                    err = flag_display_show_lap(15, 52);
+                    break;
+                case FLAG_SCREEN_GREEN:
+                    err = flag_display_show_green();
+                    break;
+                case FLAG_SCREEN_YELLOW:
+                    err = flag_display_show_yellow("TURN 6");
+                    break;
+                case FLAG_SCREEN_DOUBLE_YELLOW:
+                    err = flag_display_show_double_yellow("TURN 6");
+                    break;
+                default:
+                    err = ESP_ERR_NOT_SUPPORTED;
+                    break;
+            }
             if (err != ESP_OK) {
-                ESP_LOGE(TAG, "Touch color update failed: %s", esp_err_to_name(err));
+                ESP_LOGE(TAG, "Stage change failed: %s", esp_err_to_name(err));
             } else {
-                app::SerialBoxPrinter printer("TOUCH COLOR");
+                app::SerialBoxPrinter printer("FLAG STAGE");
                 printer.add_body_bullet("Position: " + std::to_string(point.x) + ", " + std::to_string(point.y), 2U);
-                printer.add_body_bullet("Screen color: " + std::string(color_names[color_index]), 2U);
+                printer.add_body_bullet("Stage: " + std::string(stage_names[stage_index]), 2U);
                 printer.print();
             }
         }
@@ -80,9 +99,15 @@ extern "C" void app_main(void)
         return;
     }
 
-    err = bsp_display_set_solid_color(0x00C853);
+    err = flag_display_init();
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Initial display color failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Flag display init failed: %s", esp_err_to_name(err));
+        return;
+    }
+
+    err = flag_display_show_lap(15, 52);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Flag display show_lap failed: %s", esp_err_to_name(err));
         return;
     }
 
@@ -92,9 +117,9 @@ extern "C" void app_main(void)
         return;
     }
 
-    BaseType_t task_result = xTaskCreate(touch_color_task, "touch_color", 4096, nullptr, 3, nullptr);
+    BaseType_t task_result = xTaskCreate(flag_stage_task, "flag_stage", 4096, nullptr, 3, nullptr);
     if (task_result != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create touch color task");
+        ESP_LOGE(TAG, "Failed to create flag stage task");
         return;
     }
 }

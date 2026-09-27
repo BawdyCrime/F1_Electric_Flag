@@ -4342,14 +4342,12 @@ CONFIG_LV_TXT_COLOR_CMD="#"
 # CONFIG_LV_FONT_MONTSERRAT_10 is not set
 # default:
 # CONFIG_LV_FONT_MONTSERRAT_12 is not set
-# default:
 CONFIG_LV_FONT_MONTSERRAT_14=y
 # default:
 # CONFIG_LV_FONT_MONTSERRAT_16 is not set
 # default:
 # CONFIG_LV_FONT_MONTSERRAT_18 is not set
-# default:
-# CONFIG_LV_FONT_MONTSERRAT_20 is not set
+CONFIG_LV_FONT_MONTSERRAT_20=y
 # default:
 # CONFIG_LV_FONT_MONTSERRAT_22 is not set
 # default:
@@ -4368,16 +4366,14 @@ CONFIG_LV_FONT_MONTSERRAT_14=y
 # CONFIG_LV_FONT_MONTSERRAT_36 is not set
 # default:
 # CONFIG_LV_FONT_MONTSERRAT_38 is not set
-# default:
-# CONFIG_LV_FONT_MONTSERRAT_40 is not set
+CONFIG_LV_FONT_MONTSERRAT_40=y
 # default:
 # CONFIG_LV_FONT_MONTSERRAT_42 is not set
 # default:
 # CONFIG_LV_FONT_MONTSERRAT_44 is not set
 # default:
 # CONFIG_LV_FONT_MONTSERRAT_46 is not set
-# default:
-# CONFIG_LV_FONT_MONTSERRAT_48 is not set
+CONFIG_LV_FONT_MONTSERRAT_48=y
 # default:
 # CONFIG_LV_FONT_MONTSERRAT_28_COMPRESSED is not set
 # default:
