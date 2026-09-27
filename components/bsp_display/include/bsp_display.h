@@ -9,11 +9,12 @@
 extern "C" {
 #endif
 
-#define BSP_DISPLAY_PANEL_WIDTH  480
-#define BSP_DISPLAY_PANEL_HEIGHT 320
+#define BSP_DISPLAY_PANEL_WIDTH  320
+#define BSP_DISPLAY_PANEL_HEIGHT 480
 
 esp_err_t bsp_display_init(void);
 esp_err_t bsp_display_deinit(void);
+esp_err_t bsp_display_set_solid_color(uint32_t rgb888);
 esp_err_t bsp_display_set_backlight(bool enabled);
 esp_err_t bsp_display_set_rotation(uint16_t rotation);
 

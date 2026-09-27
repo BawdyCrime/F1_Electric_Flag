@@ -31,4 +31,10 @@ extern "C" void app_main(void)
         ESP_LOGE(TAG, "Display init failed: %s", esp_err_to_name(err));
         return;
     }
+
+    err = bsp_display_set_solid_color(0x00C853);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "LVGL solid-color screen failed: %s", esp_err_to_name(err));
+        return;
+    }
 }

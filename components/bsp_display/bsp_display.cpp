@@ -6,14 +6,44 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
+#include "esp_lvgl_port.h"
 
 #include "bsp_board.h"
+#include "bsp_expander.h"
 #include "serial_box_printer.h"
+
+#include "esp_heap_caps.h"
+
+#include <algorithm>
 
 static const char *TAG = "bsp_display";
 static esp_lcd_panel_io_handle_t s_panel_io = nullptr;
 static esp_lcd_panel_handle_t s_panel = nullptr;
+static lv_display_t *s_lvgl_display = nullptr;
 static bool s_spi_bus_initialized = false;
+
+extern "C" const axs15231b_lcd_init_cmd_t *bsp_display_get_init_commands(size_t *count);
+
+static esp_err_t display_direct_color_test(void) {
+    constexpr uint32_t rows_per_chunk = 6;
+    constexpr uint16_t test_color = 0x07E0;
+    const size_t pixel_count = BSP_DISPLAY_PANEL_WIDTH * rows_per_chunk;
+    auto *pixels = static_cast<uint16_t *>(heap_caps_malloc(pixel_count * sizeof(uint16_t),
+                                                            MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+    if (pixels == nullptr) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    const uint16_t wire_color = static_cast<uint16_t>((test_color << 8) | (test_color >> 8));
+    std::fill_n(pixels, pixel_count, wire_color);
+    esp_err_t err = ESP_OK;
+    for (uint32_t row = 0; row < BSP_DISPLAY_PANEL_HEIGHT && err == ESP_OK; row += rows_per_chunk) {
+        const uint32_t row_end = std::min<uint32_t>(row + rows_per_chunk, BSP_DISPLAY_PANEL_HEIGHT);
+        err = esp_lcd_panel_draw_bitmap(s_panel, 0, row, BSP_DISPLAY_PANEL_WIDTH, row_end, pixels);
+    }
+    heap_caps_free(pixels);
+    return err;
+}
 
 esp_err_t bsp_display_init(void) {
     if (s_panel != nullptr) {
@@ -26,9 +56,15 @@ esp_err_t bsp_display_init(void) {
     bus_cfg.data1_io_num = BSP_SPI_QSPI_IO1_GPIO;
     bus_cfg.data2_io_num = BSP_SPI_QSPI_IO2_GPIO;
     bus_cfg.data3_io_num = BSP_SPI_QSPI_IO3_GPIO;
-    bus_cfg.max_transfer_sz = 4096;
+    bus_cfg.max_transfer_sz = 4 * 1024;
 
-    esp_err_t err = spi_bus_initialize(BSP_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
+    esp_err_t err = bsp_expander_pulse_lcd_reset();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "LCD reset through TCA9554 failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    err = spi_bus_initialize(BSP_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "LCD SPI bus init failed: %s", esp_err_to_name(err));
         return err;
@@ -54,6 +90,9 @@ esp_err_t bsp_display_init(void) {
 
     axs15231b_vendor_config_t vendor_config = {};
     vendor_config.flags.use_qspi_interface = 1;
+    size_t init_command_count = 0;
+    vendor_config.init_cmds = bsp_display_get_init_commands(&init_command_count);
+    vendor_config.init_cmds_size = init_command_count;
 
     esp_lcd_panel_dev_config_t panel_config = {};
     panel_config.reset_gpio_num = GPIO_NUM_NC;
@@ -75,7 +114,7 @@ esp_err_t bsp_display_init(void) {
         err = esp_lcd_panel_init(s_panel);
     }
     if (err == ESP_OK) {
-        err = esp_lcd_panel_disp_on_off(s_panel, true);
+        err = esp_lcd_panel_disp_on_off(s_panel, false);
     }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "LCD panel startup failed: %s", esp_err_to_name(err));
@@ -91,7 +130,7 @@ esp_err_t bsp_display_init(void) {
     err = bsp_display_set_backlight(true);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "LCD backlight enable failed: %s", esp_err_to_name(err));
-        esp_lcd_panel_disp_on_off(s_panel, false);
+        esp_lcd_panel_disp_on_off(s_panel, true);
         esp_lcd_panel_del(s_panel);
         s_panel = nullptr;
         esp_lcd_panel_io_del(s_panel_io);
@@ -101,12 +140,48 @@ esp_err_t bsp_display_init(void) {
         return err;
     }
 
+    err = display_direct_color_test();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Direct QSPI color test failed: %s", esp_err_to_name(err));
+        bsp_display_deinit();
+        return err;
+    }
+
+    const lvgl_port_cfg_t lvgl_config = ESP_LVGL_PORT_INIT_CONFIG();
+    err = lvgl_port_init(&lvgl_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "LVGL port init failed: %s", esp_err_to_name(err));
+        bsp_display_deinit();
+        return err;
+    }
+
+    lvgl_port_display_cfg_t lvgl_display_config = {};
+    lvgl_display_config.io_handle = s_panel_io;
+    lvgl_display_config.panel_handle = s_panel;
+    lvgl_display_config.buffer_size = BSP_DISPLAY_PANEL_WIDTH * BSP_DISPLAY_PANEL_HEIGHT;
+    lvgl_display_config.double_buffer = false;
+    lvgl_display_config.hres = BSP_DISPLAY_PANEL_WIDTH;
+    lvgl_display_config.vres = BSP_DISPLAY_PANEL_HEIGHT;
+    lvgl_display_config.color_format = LV_COLOR_FORMAT_RGB565;
+    lvgl_display_config.flags.buff_spiram = true;
+    lvgl_display_config.flags.full_refresh = true;
+    lvgl_display_config.flags.buff_dma = true;
+    lvgl_display_config.flags.swap_bytes = true;
+    s_lvgl_display = lvgl_port_add_disp(&lvgl_display_config);
+    if (s_lvgl_display == nullptr) {
+        ESP_LOGE(TAG, "LVGL display registration failed");
+        lvgl_port_deinit();
+        bsp_display_deinit();
+        return ESP_ERR_NO_MEM;
+    }
+
     char display_info[128];
     std::snprintf(display_info, sizeof(display_info), "Host=%d, SCLK=%d, D0..D3=%d/%d/%d/%d, CS=%d",
                   BSP_SPI_HOST, BSP_SPI_SCLK_GPIO, BSP_SPI_QSPI_IO0_GPIO, BSP_SPI_QSPI_IO1_GPIO,
                   BSP_SPI_QSPI_IO2_GPIO, BSP_SPI_QSPI_IO3_GPIO, BSP_SPI_CS_GPIO);
     app::SerialBoxPrinter printer("DISPLAY STATUS");
     printer.add_body_bullet("AXS15231B initialized; backlight enabled", 2U);
+    printer.add_body_bullet("Direct RGB565 panel test sent", 2U);
     printer.add_body_bullet(display_info, 2U);
     printer.print();
     return ESP_OK;
@@ -114,6 +189,17 @@ esp_err_t bsp_display_init(void) {
 
 esp_err_t bsp_display_deinit(void) {
     esp_err_t first_err = bsp_display_set_backlight(false);
+    if (s_lvgl_display != nullptr) {
+        esp_err_t err = lvgl_port_remove_disp(s_lvgl_display);
+        if (first_err == ESP_OK && err != ESP_OK) {
+            first_err = err;
+        }
+        s_lvgl_display = nullptr;
+        err = lvgl_port_deinit();
+        if (first_err == ESP_OK && err != ESP_OK) {
+            first_err = err;
+        }
+    }
     if (s_panel != nullptr) {
         esp_err_t err = esp_lcd_panel_del(s_panel);
         if (first_err == ESP_OK && err != ESP_OK) {
@@ -144,6 +230,20 @@ esp_err_t bsp_display_deinit(void) {
 
 esp_err_t bsp_display_set_backlight(bool enabled) {
     return bsp_board_set_backlight(enabled);
+}
+
+esp_err_t bsp_display_set_solid_color(uint32_t rgb888) {
+    if (s_lvgl_display == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!lvgl_port_lock(0)) {
+        return ESP_ERR_TIMEOUT;
+    }
+    lv_obj_t *screen = lv_display_get_screen_active(s_lvgl_display);
+    lv_obj_set_style_bg_color(screen, lv_color_hex(rgb888), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, LV_PART_MAIN);
+    lvgl_port_unlock();
+    return ESP_OK;
 }
 
 esp_err_t bsp_display_set_rotation(uint16_t rotation) {
