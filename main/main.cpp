@@ -16,10 +16,10 @@ static const char *TAG = "main";
 static void flag_stage_task(void *arg)
 {
     (void)arg;
-    constexpr flag_screen_t stages[] = {FLAG_SCREEN_LAP, FLAG_SCREEN_GREEN, FLAG_SCREEN_RED, FLAG_SCREEN_YELLOW,
-                                        FLAG_SCREEN_BLUE, FLAG_SCREEN_DOUBLE_YELLOW};
+        constexpr flag_screen_t stages[] = {FLAG_SCREEN_LAP, FLAG_SCREEN_GREEN, FLAG_SCREEN_RED, FLAG_SCREEN_YELLOW,
+                                                                                FLAG_SCREEN_BLUE, FLAG_SCREEN_DOUBLE_YELLOW, FLAG_SCREEN_SAFETY_CAR};
     constexpr const char *stage_names[] = {"LAP", "GREEN FLAG", "RED FLAG", "YELLOW FLAG", "BLUE FLAG",
-                                          "DOUBLE YELLOW FLAG"};
+                                                                                    "DOUBLE YELLOW FLAG", "SAFETY CAR"};
     constexpr size_t stage_count = sizeof(stages) / sizeof(stages[0]);
     bool previous_pressed = false;
 
@@ -61,6 +61,9 @@ static void flag_stage_task(void *arg)
                     break;
                 case FLAG_SCREEN_DOUBLE_YELLOW:
                     err = flag_display_show_double_yellow("TURN 6");
+                    break;
+                case FLAG_SCREEN_SAFETY_CAR:
+                    err = flag_display_show_safety_car();
                     break;
                 default:
                     err = ESP_ERR_NOT_SUPPORTED;

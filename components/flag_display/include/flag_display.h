@@ -46,6 +46,9 @@ esp_err_t flag_display_show_blue(const char *car_number);
 // Optional turn_info appears below the flag name. Pass nullptr or an empty string to omit it, e.g. "TURN 6".
 esp_err_t flag_display_show_double_yellow(const char *turn_info);
 
+// Shows the yellow Safety Car flag with a centered "SC" mark.
+esp_err_t flag_display_show_safety_car(void);
+
 #ifdef __cplusplus
 }
 #endif

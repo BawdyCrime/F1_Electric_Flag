@@ -29,6 +29,7 @@ struct flag_display_state_t {
     flag_view_t yellow;
     flag_view_t blue;
     flag_view_t double_yellow;
+    flag_view_t safety_car;
     lv_timer_t *flag_blink_timer = nullptr;
     lv_timer_t *double_yellow_blink_timer = nullptr;
     lv_timer_t *green_revert_timer = nullptr;
@@ -125,6 +126,68 @@ static void double_yellow_blink_timer_cb(lv_timer_t *timer) {
     }
     s_state.double_yellow_triangle_state = !s_state.double_yellow_triangle_state;
     lv_obj_invalidate(s_state.double_yellow.square);
+}
+
+static void safety_car_draw_event_cb(lv_event_t *e) {
+    lv_obj_t *obj = static_cast<lv_obj_t *>(lv_event_get_current_target(e));
+    lv_layer_t *layer = lv_event_get_layer(e);
+    lv_area_t area;
+    lv_obj_get_coords(obj, &area);
+
+    constexpr int32_t GRID_SIZE = 24;
+    constexpr int32_t DOT_SIZE = 10;
+    const int32_t width = lv_area_get_width(&area);
+    const int32_t height = lv_area_get_height(&area);
+    const int32_t step_x = width / GRID_SIZE;
+    const int32_t step_y = height / GRID_SIZE;
+    const int32_t grid_offset_x = (width - step_x * GRID_SIZE) / 2;
+    const int32_t grid_offset_y = (height - step_y * GRID_SIZE) / 2;
+
+    static constexpr const char *BITMAP[] = {
+        "00111100  00111100",
+        "01111110  01111110",
+        "11000011  11000011",
+        "11000000  11000000",
+        "01110000  11000000",
+        "00111100  11000000",
+        "00000110  11000000",
+        "00000011  11000000",
+        "11000011  11000011",
+        "01111110  01111110",
+        "00111100  00111100",
+    };
+    constexpr int32_t BITMAP_ROWS = sizeof(BITMAP) / sizeof(BITMAP[0]);
+    constexpr int32_t BITMAP_COLS = 18;
+    constexpr int32_t BITMAP_START_ROW = (GRID_SIZE - BITMAP_ROWS) / 2;
+    constexpr int32_t BITMAP_START_COL = (GRID_SIZE - BITMAP_COLS) / 2;
+
+    lv_draw_rect_dsc_t dot;
+    lv_draw_rect_dsc_init(&dot);
+    dot.bg_opa = LV_OPA_COVER;
+    dot.border_width = 0;
+    dot.radius = LV_RADIUS_CIRCLE;
+
+    for (int32_t row = 0; row < GRID_SIZE; ++row) {
+        for (int32_t col = 0; col < GRID_SIZE; ++col) {
+            const bool is_border = row < 2 || row >= GRID_SIZE - 2 || col < 2 || col >= GRID_SIZE - 2;
+            if (is_border) {
+                dot.bg_color = lv_color_hex(0xFFD500);
+            } else {
+                const int32_t bitmap_row = row - BITMAP_START_ROW;
+                const int32_t bitmap_col = col - BITMAP_START_COL;
+                if (bitmap_row < 0 || bitmap_row >= BITMAP_ROWS || bitmap_col < 0 || bitmap_col >= BITMAP_COLS ||
+                    BITMAP[bitmap_row][bitmap_col] != '1') {
+                    continue;
+                }
+                dot.bg_color = lv_color_white();
+            }
+            const int32_t center_x = area.x1 + grid_offset_x + col * step_x + step_x / 2;
+            const int32_t center_y = area.y1 + grid_offset_y + row * step_y + step_y / 2;
+            lv_area_t dot_area = {center_x - DOT_SIZE / 2, center_y - DOT_SIZE / 2,
+                                  center_x + DOT_SIZE / 2, center_y + DOT_SIZE / 2};
+            lv_draw_rect(layer, &dot, &dot_area);
+        }
+    }
 }
 
 static void pause_flag_timers(void) {
@@ -228,6 +291,19 @@ static void create_double_yellow_screen(const char *flag_name, flag_view_t *view
     lv_obj_add_event_cb(view->square, double_yellow_draw_event_cb, LV_EVENT_DRAW_MAIN, nullptr);
 }
 
+static void create_safety_car_screen(flag_view_t *view) {
+    create_flag_screen_base("SAFETY CAR", view);
+
+    view->square = lv_obj_create(view->screen);
+    lv_obj_set_size(view->square, FLAG_SQUARE_SIZE, FLAG_SQUARE_SIZE);
+    lv_obj_align(view->square, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(view->square, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(view->square, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(view->square, 0, 0);
+    lv_obj_set_style_radius(view->square, 0, 0);
+    lv_obj_add_event_cb(view->square, safety_car_draw_event_cb, LV_EVENT_DRAW_MAIN, nullptr);
+}
+
 
 esp_err_t flag_display_init(void) {
     if (!lvgl_port_lock(0)) {
@@ -259,6 +335,7 @@ esp_err_t flag_display_init(void) {
     create_flag_screen(0xFFD500, "YELLOW FLAG", &s_state.yellow);
     create_flag_screen(0x0057B8, "BLUE FLAG", &s_state.blue);
     create_double_yellow_screen("DOUBLE\nYELLOW FLAG", &s_state.double_yellow);
+    create_safety_car_screen(&s_state.safety_car);
 
     s_state.flag_blink_timer = lv_timer_create(blink_timer_cb, BLINK_PERIOD_MS, nullptr);
     lv_timer_pause(s_state.flag_blink_timer);
@@ -394,6 +471,23 @@ esp_err_t flag_display_show_double_yellow(const char *turn_info) {
     lv_timer_reset(s_state.double_yellow_blink_timer);
     lv_timer_resume(s_state.double_yellow_blink_timer);
     load_screen_locked(s_state.double_yellow.screen, FLAG_SCREEN_DOUBLE_YELLOW);
+
+    lvgl_port_unlock();
+    return ESP_OK;
+}
+
+esp_err_t flag_display_show_safety_car(void) {
+    if (s_state.safety_car.screen == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (!lvgl_port_lock(0)) {
+        ESP_LOGE(TAG, "lvgl_port_lock failed");
+        return ESP_FAIL;
+    }
+
+    pause_flag_timers();
+    load_screen_locked(s_state.safety_car.screen, FLAG_SCREEN_SAFETY_CAR);
 
     lvgl_port_unlock();
     return ESP_OK;
