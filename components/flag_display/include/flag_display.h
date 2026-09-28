@@ -31,12 +31,16 @@ esp_err_t flag_display_show_lap(uint32_t current_lap, uint32_t total_laps);
 // Shows a full-screen green flag, used briefly on any flag-clear transition.
 esp_err_t flag_display_show_green(void);
 
-// Shows the yellow flag; the color square blinks to draw attention.
-// turn_info is optional (pass nullptr or an empty string to omit it), e.g. "TURN 6".
+// Shows the yellow flag with a blinking color square; optional turn_info appears below the flag name.
+// Pass nullptr or an empty string to omit it, e.g. "TURN 6".
 esp_err_t flag_display_show_yellow(const char *turn_info);
 
+// Shows the blue flag with a blinking color square; optional car_number appears below the flag name.
+// Pass nullptr or an empty string to omit it, e.g. "44".
+esp_err_t flag_display_show_blue(const char *car_number);
+
 // Shows the double yellow flag; two triangles split the square and blink alternately.
-// turn_info is optional (pass nullptr or an empty string to omit it), e.g. "TURN 6".
+// Optional turn_info appears below the flag name. Pass nullptr or an empty string to omit it, e.g. "TURN 6".
 esp_err_t flag_display_show_double_yellow(const char *turn_info);
 
 #ifdef __cplusplus
