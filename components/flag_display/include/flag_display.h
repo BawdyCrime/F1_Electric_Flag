@@ -31,6 +31,9 @@ esp_err_t flag_display_show_lap(uint32_t current_lap, uint32_t total_laps);
 // Shows a full-screen green flag, used briefly on any flag-clear transition.
 esp_err_t flag_display_show_green(void);
 
+// Shows a full-screen solid red flag until another screen is selected.
+esp_err_t flag_display_show_red(void);
+
 // Shows the yellow flag with a blinking color square; optional turn_info appears below the flag name.
 // Pass nullptr or an empty string to omit it, e.g. "TURN 6".
 esp_err_t flag_display_show_yellow(const char *turn_info);

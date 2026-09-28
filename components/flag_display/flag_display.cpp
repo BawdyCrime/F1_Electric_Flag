@@ -25,6 +25,7 @@ struct flag_view_t {
 struct flag_display_state_t {
     flag_view_t lap;
     flag_view_t green;
+    flag_view_t red;
     flag_view_t yellow;
     flag_view_t blue;
     flag_view_t double_yellow;
@@ -254,6 +255,7 @@ esp_err_t flag_display_init(void) {
     lv_obj_align(s_state.lap.name_label_shadow, LV_ALIGN_CENTER, 1, 0);
 
     create_flag_screen(0x00B140, "GREEN FLAG", &s_state.green);
+    create_flag_screen(0xFF0000, "RED FLAG", &s_state.red);
     create_flag_screen(0xFFD500, "YELLOW FLAG", &s_state.yellow);
     create_flag_screen(0x0057B8, "BLUE FLAG", &s_state.blue);
     create_double_yellow_screen("DOUBLE\nYELLOW FLAG", &s_state.double_yellow);
@@ -306,6 +308,23 @@ esp_err_t flag_display_show_green(void) {
     lv_timer_reset(s_state.green_revert_timer);
     lv_timer_resume(s_state.green_revert_timer);
     load_screen_locked(s_state.green.screen, FLAG_SCREEN_GREEN);
+
+    lvgl_port_unlock();
+    return ESP_OK;
+}
+
+esp_err_t flag_display_show_red(void) {
+    if (s_state.red.screen == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (!lvgl_port_lock(0)) {
+        ESP_LOGE(TAG, "lvgl_port_lock failed");
+        return ESP_FAIL;
+    }
+
+    pause_flag_timers();
+    load_screen_locked(s_state.red.screen, FLAG_SCREEN_RED);
 
     lvgl_port_unlock();
     return ESP_OK;
