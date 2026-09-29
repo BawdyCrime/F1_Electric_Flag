@@ -1,9 +1,13 @@
 #include "flag_display.h"
 
 #include "bsp_display.h"
+#include "dot_matrix.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "lvgl.h"
+#include "safety_car_matrix.h"
+
+#include <cstdint>
 
 static const char *TAG = "flag_display";
 
@@ -134,60 +138,12 @@ static void safety_car_draw_event_cb(lv_event_t *e) {
     lv_area_t area;
     lv_obj_get_coords(obj, &area);
 
-    constexpr int32_t GRID_SIZE = 24;
-    constexpr int32_t DOT_SIZE = 10;
-    const int32_t width = lv_area_get_width(&area);
-    const int32_t height = lv_area_get_height(&area);
-    const int32_t step_x = width / GRID_SIZE;
-    const int32_t step_y = height / GRID_SIZE;
-    const int32_t grid_offset_x = (width - step_x * GRID_SIZE) / 2;
-    const int32_t grid_offset_y = (height - step_y * GRID_SIZE) / 2;
-
-    static constexpr const char *BITMAP[] = {
-        "00111100  00111100",
-        "01111110  01111110",
-        "11000011  11000011",
-        "11000000  11000000",
-        "01110000  11000000",
-        "00111100  11000000",
-        "00000110  11000000",
-        "00000011  11000000",
-        "11000011  11000011",
-        "01111110  01111110",
-        "00111100  00111100",
+    dot_matrix_color_t palette[] = {
+        {'Y', lv_color_hex(0xFFD500)},
+        {'W', lv_color_white()},
     };
-    constexpr int32_t BITMAP_ROWS = sizeof(BITMAP) / sizeof(BITMAP[0]);
-    constexpr int32_t BITMAP_COLS = 18;
-    constexpr int32_t BITMAP_START_ROW = (GRID_SIZE - BITMAP_ROWS) / 2;
-    constexpr int32_t BITMAP_START_COL = (GRID_SIZE - BITMAP_COLS) / 2;
-
-    lv_draw_rect_dsc_t dot;
-    lv_draw_rect_dsc_init(&dot);
-    dot.bg_opa = LV_OPA_COVER;
-    dot.border_width = 0;
-    dot.radius = LV_RADIUS_CIRCLE;
-
-    for (int32_t row = 0; row < GRID_SIZE; ++row) {
-        for (int32_t col = 0; col < GRID_SIZE; ++col) {
-            const bool is_border = row < 2 || row >= GRID_SIZE - 2 || col < 2 || col >= GRID_SIZE - 2;
-            if (is_border) {
-                dot.bg_color = lv_color_hex(0xFFD500);
-            } else {
-                const int32_t bitmap_row = row - BITMAP_START_ROW;
-                const int32_t bitmap_col = col - BITMAP_START_COL;
-                if (bitmap_row < 0 || bitmap_row >= BITMAP_ROWS || bitmap_col < 0 || bitmap_col >= BITMAP_COLS ||
-                    BITMAP[bitmap_row][bitmap_col] != '1') {
-                    continue;
-                }
-                dot.bg_color = lv_color_white();
-            }
-            const int32_t center_x = area.x1 + grid_offset_x + col * step_x + step_x / 2;
-            const int32_t center_y = area.y1 + grid_offset_y + row * step_y + step_y / 2;
-            lv_area_t dot_area = {center_x - DOT_SIZE / 2, center_y - DOT_SIZE / 2,
-                                  center_x + DOT_SIZE / 2, center_y + DOT_SIZE / 2};
-            lv_draw_rect(layer, &dot, &dot_area);
-        }
-    }
+    dot_matrix_draw(layer, &area, SAFETY_CAR_MATRIX, SAFETY_CAR_MATRIX_SIZE, SAFETY_CAR_MATRIX_SIZE, palette,
+                    sizeof(palette) / sizeof(palette[0]));
 }
 
 static void pause_flag_timers(void) {
