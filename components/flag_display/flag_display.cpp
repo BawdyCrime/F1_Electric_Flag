@@ -5,8 +5,7 @@
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "lvgl.h"
-#include "safety_car_matrix.h"
-#include "vsc_matrix.h"
+#include "matrix_patterns.h"
 
 #include <cstdint>
 
