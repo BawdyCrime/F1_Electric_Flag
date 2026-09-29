@@ -49,6 +49,9 @@ esp_err_t flag_display_show_double_yellow(const char *turn_info);
 // Shows the yellow Safety Car flag with a centered "SC" mark.
 esp_err_t flag_display_show_safety_car(void);
 
+// Shows the Virtual Safety Car flag with a centered "VSC" mark.
+esp_err_t flag_display_show_vsc(void);
+
 #ifdef __cplusplus
 }
 #endif

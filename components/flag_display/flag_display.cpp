@@ -6,6 +6,7 @@
 #include "esp_log.h"
 #include "lvgl.h"
 #include "safety_car_matrix.h"
+#include "vsc_matrix.h"
 
 #include <cstdint>
 
@@ -34,6 +35,7 @@ struct flag_display_state_t {
     flag_view_t blue;
     flag_view_t double_yellow;
     flag_view_t safety_car;
+    flag_view_t vsc;
     lv_timer_t *flag_blink_timer = nullptr;
     lv_timer_t *double_yellow_blink_timer = nullptr;
     lv_timer_t *green_revert_timer = nullptr;
@@ -132,7 +134,7 @@ static void double_yellow_blink_timer_cb(lv_timer_t *timer) {
     lv_obj_invalidate(s_state.double_yellow.square);
 }
 
-static void safety_car_draw_event_cb(lv_event_t *e) {
+static void dot_matrix_draw_event_cb(lv_event_t *e, const char *const *matrix, size_t matrix_size) {
     lv_obj_t *obj = static_cast<lv_obj_t *>(lv_event_get_current_target(e));
     lv_layer_t *layer = lv_event_get_layer(e);
     lv_area_t area;
@@ -142,8 +144,15 @@ static void safety_car_draw_event_cb(lv_event_t *e) {
         {'Y', lv_color_hex(0xFFD500)},
         {'W', lv_color_white()},
     };
-    dot_matrix_draw(layer, &area, SAFETY_CAR_MATRIX, SAFETY_CAR_MATRIX_SIZE, SAFETY_CAR_MATRIX_SIZE, palette,
-                    sizeof(palette) / sizeof(palette[0]));
+    dot_matrix_draw(layer, &area, matrix, matrix_size, matrix_size, palette, sizeof(palette) / sizeof(palette[0]));
+}
+
+static void safety_car_draw_event_cb(lv_event_t *e) {
+    dot_matrix_draw_event_cb(e, SAFETY_CAR_MATRIX, SAFETY_CAR_MATRIX_SIZE);
+}
+
+static void vsc_draw_event_cb(lv_event_t *e) {
+    dot_matrix_draw_event_cb(e, VSC_MATRIX, VSC_MATRIX_SIZE);
 }
 
 static void pause_flag_timers(void) {
@@ -260,6 +269,19 @@ static void create_safety_car_screen(flag_view_t *view) {
     lv_obj_add_event_cb(view->square, safety_car_draw_event_cb, LV_EVENT_DRAW_MAIN, nullptr);
 }
 
+static void create_vsc_screen(flag_view_t *view) {
+    create_flag_screen_base("VIRTUAL\nSAFETY CAR", view);
+
+    view->square = lv_obj_create(view->screen);
+    lv_obj_set_size(view->square, FLAG_SQUARE_SIZE, FLAG_SQUARE_SIZE);
+    lv_obj_align(view->square, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(view->square, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(view->square, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(view->square, 0, 0);
+    lv_obj_set_style_radius(view->square, 0, 0);
+    lv_obj_add_event_cb(view->square, vsc_draw_event_cb, LV_EVENT_DRAW_MAIN, nullptr);
+}
+
 
 esp_err_t flag_display_init(void) {
     if (!lvgl_port_lock(0)) {
@@ -292,6 +314,7 @@ esp_err_t flag_display_init(void) {
     create_flag_screen(0x0057B8, "BLUE FLAG", &s_state.blue);
     create_double_yellow_screen("DOUBLE\nYELLOW FLAG", &s_state.double_yellow);
     create_safety_car_screen(&s_state.safety_car);
+    create_vsc_screen(&s_state.vsc);
 
     s_state.flag_blink_timer = lv_timer_create(blink_timer_cb, BLINK_PERIOD_MS, nullptr);
     lv_timer_pause(s_state.flag_blink_timer);
@@ -444,6 +467,23 @@ esp_err_t flag_display_show_safety_car(void) {
 
     pause_flag_timers();
     load_screen_locked(s_state.safety_car.screen, FLAG_SCREEN_SAFETY_CAR);
+
+    lvgl_port_unlock();
+    return ESP_OK;
+}
+
+esp_err_t flag_display_show_vsc(void) {
+    if (s_state.vsc.screen == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (!lvgl_port_lock(0)) {
+        ESP_LOGE(TAG, "lvgl_port_lock failed");
+        return ESP_FAIL;
+    }
+
+    pause_flag_timers();
+    load_screen_locked(s_state.vsc.screen, FLAG_SCREEN_VSC);
 
     lvgl_port_unlock();
     return ESP_OK;
