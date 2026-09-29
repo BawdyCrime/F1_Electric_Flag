@@ -2,10 +2,11 @@
 
 #include <algorithm>
 
-void dot_matrix_draw(lv_layer_t *layer, const lv_area_t *area, const char *const *matrix, size_t rows,
-                     size_t columns, const dot_matrix_color_t *palette, size_t palette_size) {
-    if (layer == nullptr || area == nullptr || matrix == nullptr || rows == 0 || columns == 0 || palette == nullptr ||
-        palette_size == 0) {
+static void dot_matrix_draw_internal(lv_layer_t *layer, const lv_area_t *area, const char *const *matrix,
+                                     dot_matrix_pixel_fn pixel_fn, void *user_data, size_t rows, size_t columns,
+                                     const dot_matrix_color_t *palette, size_t palette_size) {
+    if (layer == nullptr || area == nullptr || (matrix == nullptr && pixel_fn == nullptr) || rows == 0 || columns == 0 ||
+        palette == nullptr || palette_size == 0) {
         return;
     }
 
@@ -30,11 +31,11 @@ void dot_matrix_draw(lv_layer_t *layer, const lv_area_t *area, const char *const
     dot.radius = LV_RADIUS_CIRCLE;
 
     for (size_t row = 0; row < rows; ++row) {
-        if (matrix[row] == nullptr) {
+        if (pixel_fn == nullptr && matrix[row] == nullptr) {
             continue;
         }
         for (size_t column = 0; column < columns; ++column) {
-            const char pixel = matrix[row][column];
+            const char pixel = pixel_fn != nullptr ? pixel_fn(row, column, user_data) : matrix[row][column];
             if (pixel == '.' || pixel == '\0') {
                 continue;
             }
@@ -61,4 +62,15 @@ void dot_matrix_draw(lv_layer_t *layer, const lv_area_t *area, const char *const
             lv_draw_rect(layer, &dot, &dot_area);
         }
     }
+}
+
+void dot_matrix_draw(lv_layer_t *layer, const lv_area_t *area, const char *const *matrix, size_t rows,
+                     size_t columns, const dot_matrix_color_t *palette, size_t palette_size) {
+    dot_matrix_draw_internal(layer, area, matrix, nullptr, nullptr, rows, columns, palette, palette_size);
+}
+
+void dot_matrix_draw_generated(lv_layer_t *layer, const lv_area_t *area, size_t rows, size_t columns,
+                               dot_matrix_pixel_fn pixel_fn, void *user_data, const dot_matrix_color_t *palette,
+                               size_t palette_size) {
+    dot_matrix_draw_internal(layer, area, nullptr, pixel_fn, user_data, rows, columns, palette, palette_size);
 }
