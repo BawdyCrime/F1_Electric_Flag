@@ -5,7 +5,7 @@
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "lvgl.h"
-#include "matrix_patterns.h"
+#include "matrix_pattern.h"
 
 #include <cstdint>
 
@@ -14,7 +14,6 @@ static const char *TAG = "flag_display";
 // Bottom flag color fill is a square matching the panel width.
 static constexpr int32_t FLAG_SQUARE_SIZE = BSP_DISPLAY_PANEL_WIDTH;
 static constexpr int32_t FLAG_NAME_BAR_HEIGHT = BSP_DISPLAY_PANEL_HEIGHT - FLAG_SQUARE_SIZE;
-static constexpr size_t FLAG_MATRIX_SIZE = 32;
 static constexpr uint32_t BLINK_PERIOD_MS = 500;
 static constexpr uint32_t GREEN_AUTO_REVERT_MS = 10000; // 10 seconds
 
@@ -39,8 +38,6 @@ struct flag_display_state_t {
     lv_timer_t *flag_blink_timer = nullptr;
     lv_timer_t *double_yellow_blink_timer = nullptr;
     lv_timer_t *green_revert_timer = nullptr;
-    bool flag_blink_visible = true;
-    bool double_yellow_triangle_state = false;
     uint32_t current_lap = 0;
     uint32_t total_laps = 0;
     flag_screen_t current_screen = FLAG_SCREEN_LAP;
@@ -48,17 +45,13 @@ struct flag_display_state_t {
 
 static flag_display_state_t s_state;
 
-struct generated_matrix_pattern_t {
-    char pixel;
-    bool blink;
-    bool double_yellow;
-};
-
-static generated_matrix_pattern_t GREEN_MATRIX_PATTERN = {'G', false, false};
-static generated_matrix_pattern_t RED_MATRIX_PATTERN = {'R', false, false};
-static generated_matrix_pattern_t YELLOW_MATRIX_PATTERN = {'Y', true, false};
-static generated_matrix_pattern_t BLUE_MATRIX_PATTERN = {'B', true, false};
-static generated_matrix_pattern_t DOUBLE_YELLOW_MATRIX_PATTERN = {'Y', false, true};
+static matrix_pattern_t GREEN_MATRIX_PATTERN = {MATRIX_PATTERN_SOLID, 'G', true, false};
+static matrix_pattern_t RED_MATRIX_PATTERN = {MATRIX_PATTERN_SOLID, 'R', true, false};
+static matrix_pattern_t YELLOW_MATRIX_PATTERN = {MATRIX_PATTERN_SOLID, 'Y', true, false};
+static matrix_pattern_t BLUE_MATRIX_PATTERN = {MATRIX_PATTERN_SOLID, 'B', true, false};
+static matrix_pattern_t DOUBLE_YELLOW_MATRIX_PATTERN = {MATRIX_PATTERN_DOUBLE_YELLOW, 'Y', true, false};
+static matrix_pattern_t SAFETY_CAR_MATRIX_PATTERN = {MATRIX_PATTERN_SAFETY_CAR, '\0', true, false};
+static matrix_pattern_t VSC_MATRIX_PATTERN = {MATRIX_PATTERN_VSC, '\0', true, false};
 
 static lv_obj_t *get_blinking_flag_square(void) {
     switch (s_state.current_screen) {
@@ -71,13 +64,28 @@ static lv_obj_t *get_blinking_flag_square(void) {
     }
 }
 
+static matrix_pattern_t *get_blinking_flag_pattern(void) {
+    switch (s_state.current_screen) {
+        case FLAG_SCREEN_YELLOW:
+            return &YELLOW_MATRIX_PATTERN;
+        case FLAG_SCREEN_BLUE:
+            return &BLUE_MATRIX_PATTERN;
+        default:
+            return nullptr;
+    }
+}
+
 static void blink_timer_cb(lv_timer_t *timer) {
     (void)timer;
     lv_obj_t *square = get_blinking_flag_square();
     if (square == nullptr) {
         return;
     }
-    s_state.flag_blink_visible = !s_state.flag_blink_visible;
+    matrix_pattern_t *pattern = get_blinking_flag_pattern();
+    if (pattern == nullptr) {
+        return;
+    }
+    pattern->visible = !pattern->visible;
     lv_obj_invalidate(square);
 }
 
@@ -114,13 +122,13 @@ static void double_yellow_blink_timer_cb(lv_timer_t *timer) {
     if (s_state.double_yellow.square == nullptr) {
         return;
     }
-    s_state.double_yellow_triangle_state = !s_state.double_yellow_triangle_state;
+    DOUBLE_YELLOW_MATRIX_PATTERN.triangle_state = !DOUBLE_YELLOW_MATRIX_PATTERN.triangle_state;
     lv_obj_invalidate(s_state.double_yellow.square);
 }
 
-static void dot_matrix_draw_event_cb(lv_event_t *e, const char *const *matrix, size_t matrix_size) {
-    lv_obj_t *obj = static_cast<lv_obj_t *>(lv_event_get_current_target(e));
-    lv_layer_t *layer = lv_event_get_layer(e);
+static void matrix_draw_event_cb(lv_event_t *event) {
+    lv_obj_t *obj = static_cast<lv_obj_t *>(lv_event_get_current_target(event));
+    lv_layer_t *layer = lv_event_get_layer(event);
     lv_area_t area;
     lv_obj_get_coords(obj, &area);
 
@@ -131,43 +139,8 @@ static void dot_matrix_draw_event_cb(lv_event_t *e, const char *const *matrix, s
         {'B', lv_color_hex(0x0057B8)},
         {'W', lv_color_white()},
     };
-    dot_matrix_draw(layer, &area, matrix, matrix_size, matrix_size, palette, sizeof(palette) / sizeof(palette[0]));
-}
-
-static char generated_flag_pixel(size_t row, size_t column, void *user_data) {
-    const generated_matrix_pattern_t *pattern = static_cast<const generated_matrix_pattern_t *>(user_data);
-    if (pattern->double_yellow) {
-        const bool yellow_pixel = s_state.double_yellow_triangle_state ? column >= row : row >= column;
-        return yellow_pixel ? pattern->pixel : '.';
-    }
-    if (pattern->blink && !s_state.flag_blink_visible) {
-        return '.';
-    }
-    return pattern->pixel;
-}
-
-static void generated_flag_draw_event_cb(lv_event_t *e) {
-    lv_obj_t *obj = static_cast<lv_obj_t *>(lv_event_get_current_target(e));
-    lv_layer_t *layer = lv_event_get_layer(e);
-    lv_area_t area;
-    lv_obj_get_coords(obj, &area);
-
-    dot_matrix_color_t palette[] = {
-        {'G', lv_color_hex(0x00B140)},
-        {'R', lv_color_hex(0xFF0000)},
-        {'Y', lv_color_hex(0xFFD500)},
-        {'B', lv_color_hex(0x0057B8)},
-    };
-    dot_matrix_draw_generated(layer, &area, FLAG_MATRIX_SIZE, FLAG_MATRIX_SIZE, generated_flag_pixel,
-                              lv_event_get_user_data(e), palette, sizeof(palette) / sizeof(palette[0]));
-}
-
-static void safety_car_draw_event_cb(lv_event_t *e) {
-    dot_matrix_draw_event_cb(e, SAFETY_CAR_MATRIX, SAFETY_CAR_MATRIX_SIZE);
-}
-
-static void vsc_draw_event_cb(lv_event_t *e) {
-    dot_matrix_draw_event_cb(e, VSC_MATRIX, VSC_MATRIX_SIZE);
+    dot_matrix_draw_generated(layer, &area, MATRIX_PATTERN_SIZE, MATRIX_PATTERN_SIZE, matrix_pattern_get_pixel,
+                              lv_event_get_user_data(event), palette, sizeof(palette) / sizeof(palette[0]));
 }
 
 static void pause_flag_timers(void) {
@@ -244,8 +217,7 @@ static void create_flag_screen_base(const char *flag_name, flag_view_t *view) {
     lv_label_set_text(view->detail_label, "");
 }
 
-// Creates a flag screen: black top bar with the flag name centered, square color fill at the bottom.
-static void create_flag_screen(generated_matrix_pattern_t *pattern, const char *flag_name, flag_view_t *view) {
+static void create_flag_screen(const char *flag_name, flag_view_t *view, matrix_pattern_t *pattern) {
     create_flag_screen_base(flag_name, view);
 
     view->square = lv_obj_create(view->screen);
@@ -255,48 +227,7 @@ static void create_flag_screen(generated_matrix_pattern_t *pattern, const char *
     lv_obj_set_style_bg_opa(view->square, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(view->square, 0, 0);
     lv_obj_set_style_radius(view->square, 0, 0);
-    lv_obj_add_event_cb(view->square, generated_flag_draw_event_cb, LV_EVENT_DRAW_MAIN, pattern);
-}
-
-// Creates the double yellow flag screen: same layout, but the square draws one triangle at a time (see blink timer).
-static void create_double_yellow_screen(const char *flag_name, flag_view_t *view) {
-    create_flag_screen_base(flag_name, view);
-
-    view->square = lv_obj_create(view->screen);
-    lv_obj_set_size(view->square, FLAG_SQUARE_SIZE, FLAG_SQUARE_SIZE);
-    lv_obj_align(view->square, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_color(view->square, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(view->square, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(view->square, 0, 0);
-    lv_obj_set_style_radius(view->square, 0, 0);
-    lv_obj_add_event_cb(view->square, generated_flag_draw_event_cb, LV_EVENT_DRAW_MAIN,
-                        &DOUBLE_YELLOW_MATRIX_PATTERN);
-}
-
-static void create_safety_car_screen(flag_view_t *view) {
-    create_flag_screen_base("SAFETY CAR", view);
-
-    view->square = lv_obj_create(view->screen);
-    lv_obj_set_size(view->square, FLAG_SQUARE_SIZE, FLAG_SQUARE_SIZE);
-    lv_obj_align(view->square, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_color(view->square, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(view->square, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(view->square, 0, 0);
-    lv_obj_set_style_radius(view->square, 0, 0);
-    lv_obj_add_event_cb(view->square, safety_car_draw_event_cb, LV_EVENT_DRAW_MAIN, nullptr);
-}
-
-static void create_vsc_screen(flag_view_t *view) {
-    create_flag_screen_base("VIRTUAL\nSAFETY CAR", view);
-
-    view->square = lv_obj_create(view->screen);
-    lv_obj_set_size(view->square, FLAG_SQUARE_SIZE, FLAG_SQUARE_SIZE);
-    lv_obj_align(view->square, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_color(view->square, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(view->square, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(view->square, 0, 0);
-    lv_obj_set_style_radius(view->square, 0, 0);
-    lv_obj_add_event_cb(view->square, vsc_draw_event_cb, LV_EVENT_DRAW_MAIN, nullptr);
+    lv_obj_add_event_cb(view->square, matrix_draw_event_cb, LV_EVENT_DRAW_MAIN, pattern);
 }
 
 
@@ -325,13 +256,13 @@ esp_err_t flag_display_init(void) {
     lv_obj_center(s_state.lap.name_label);
     lv_obj_align(s_state.lap.name_label_shadow, LV_ALIGN_CENTER, 1, 0);
 
-    create_flag_screen(&GREEN_MATRIX_PATTERN, "GREEN FLAG", &s_state.green);
-    create_flag_screen(&RED_MATRIX_PATTERN, "RED FLAG", &s_state.red);
-    create_flag_screen(&YELLOW_MATRIX_PATTERN, "YELLOW FLAG", &s_state.yellow);
-    create_flag_screen(&BLUE_MATRIX_PATTERN, "BLUE FLAG", &s_state.blue);
-    create_double_yellow_screen("DOUBLE\nYELLOW FLAG", &s_state.double_yellow);
-    create_safety_car_screen(&s_state.safety_car);
-    create_vsc_screen(&s_state.vsc);
+    create_flag_screen("GREEN FLAG", &s_state.green, &GREEN_MATRIX_PATTERN);
+    create_flag_screen("RED FLAG", &s_state.red, &RED_MATRIX_PATTERN);
+    create_flag_screen("YELLOW FLAG", &s_state.yellow, &YELLOW_MATRIX_PATTERN);
+    create_flag_screen("BLUE FLAG", &s_state.blue, &BLUE_MATRIX_PATTERN);
+    create_flag_screen("DOUBLE\nYELLOW FLAG", &s_state.double_yellow, &DOUBLE_YELLOW_MATRIX_PATTERN);
+    create_flag_screen("SAFETY CAR", &s_state.safety_car, &SAFETY_CAR_MATRIX_PATTERN);
+    create_flag_screen("VIRTUAL\nSAFETY CAR", &s_state.vsc, &VSC_MATRIX_PATTERN);
 
     s_state.flag_blink_timer = lv_timer_create(blink_timer_cb, BLINK_PERIOD_MS, nullptr);
     lv_timer_pause(s_state.flag_blink_timer);
@@ -416,7 +347,7 @@ esp_err_t flag_display_show_yellow(const char *turn_info) {
 
     set_flag_name_and_detail(&s_state.yellow, "YELLOW FLAG", "", turn_info);
 
-    s_state.flag_blink_visible = true;
+    YELLOW_MATRIX_PATTERN.visible = true;
     lv_obj_invalidate(s_state.yellow.square);
     pause_flag_timers();
     lv_timer_reset(s_state.flag_blink_timer);
@@ -440,7 +371,7 @@ esp_err_t flag_display_show_blue(const char *car_number) {
 
     set_flag_name_and_detail(&s_state.blue, "BLUE FLAG", "CAR ", car_number);
 
-    s_state.flag_blink_visible = true;
+    BLUE_MATRIX_PATTERN.visible = true;
     lv_obj_invalidate(s_state.blue.square);
     pause_flag_timers();
     lv_timer_reset(s_state.flag_blink_timer);
@@ -465,7 +396,7 @@ esp_err_t flag_display_show_double_yellow(const char *turn_info) {
     set_flag_name_and_detail(&s_state.double_yellow, "DOUBLE\nYELLOW FLAG", "", turn_info);
 
     pause_flag_timers();
-    s_state.double_yellow_triangle_state = false;
+    DOUBLE_YELLOW_MATRIX_PATTERN.triangle_state = false;
     lv_timer_reset(s_state.double_yellow_blink_timer);
     lv_timer_resume(s_state.double_yellow_blink_timer);
     load_screen_locked(s_state.double_yellow.screen, FLAG_SCREEN_DOUBLE_YELLOW);

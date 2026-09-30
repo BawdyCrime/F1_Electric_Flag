@@ -1,8 +1,6 @@
-#include "matrix_patterns.h"
+#include "matrix_pattern.h"
 
-const size_t SAFETY_CAR_MATRIX_SIZE = 32;
-
-const char *const SAFETY_CAR_MATRIX[SAFETY_CAR_MATRIX_SIZE] = {
+static const char *const SAFETY_CAR_MATRIX[MATRIX_PATTERN_SIZE] = {
     "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY",
     "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY",
     "YYXXXXXXXXXXXXXXXXXXXXXXXXXXXXYY",
@@ -37,9 +35,7 @@ const char *const SAFETY_CAR_MATRIX[SAFETY_CAR_MATRIX_SIZE] = {
     "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY",
 };
 
-const size_t VSC_MATRIX_SIZE = 32;
-
-const char *const VSC_MATRIX[VSC_MATRIX_SIZE] = {
+static const char *const VSC_MATRIX[MATRIX_PATTERN_SIZE] = {
     "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY",
     "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY",
     "YYXXXXXXXXXXXXXXXXXXXXXXXXXXXXYY",
@@ -73,3 +69,23 @@ const char *const VSC_MATRIX[VSC_MATRIX_SIZE] = {
     "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY",
     "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY",
 };
+
+char matrix_pattern_get_pixel(size_t row, size_t column, void *user_data) {
+    const matrix_pattern_t *pattern = static_cast<const matrix_pattern_t *>(user_data);
+    if (pattern == nullptr || row >= MATRIX_PATTERN_SIZE || column >= MATRIX_PATTERN_SIZE) {
+        return '.';
+    }
+
+    switch (pattern->type) {
+        case MATRIX_PATTERN_SOLID:
+            return pattern->visible ? pattern->pixel : '.';
+        case MATRIX_PATTERN_DOUBLE_YELLOW:
+            return pattern->triangle_state ? (column >= row ? pattern->pixel : '.')
+                                           : (row >= column ? pattern->pixel : '.');
+        case MATRIX_PATTERN_SAFETY_CAR:
+            return SAFETY_CAR_MATRIX[row][column];
+        case MATRIX_PATTERN_VSC:
+            return VSC_MATRIX[row][column];
+    }
+    return '.';
+}
