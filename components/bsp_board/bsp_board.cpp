@@ -172,9 +172,6 @@ esp_err_t bsp_board_i2c_scan(void) {
     s_scanned_i2c_devices.clear();
 
     bool found_any = false;
-    const uint8_t pmic_candidates[] = {0x34, 0x35};
-    const uint8_t imu_candidates[] = {0x6A, 0x6B};
-
     if (s_i2c_bus_handle == NULL) {
         ESP_LOGE(TAG, "I2C bus is not initialized; call bsp_board_init() first.");
         return ESP_ERR_INVALID_STATE;
@@ -192,22 +189,6 @@ esp_err_t bsp_board_i2c_scan(void) {
 
     if (!found_any) {
         return ESP_ERR_NOT_FOUND;
-    }
-
-    for (size_t i = 0; i < sizeof(pmic_candidates); ++i) {
-        if (i2c_master_probe(s_i2c_bus_handle, pmic_candidates[i], 1000) == ESP_OK) {
-            if (std::find(s_scanned_i2c_devices.begin(), s_scanned_i2c_devices.end(), pmic_candidates[i]) == s_scanned_i2c_devices.end()) {
-                s_scanned_i2c_devices.push_back(pmic_candidates[i]);
-            }
-        }
-    }
-
-    for (size_t i = 0; i < sizeof(imu_candidates); ++i) {
-        if (i2c_master_probe(s_i2c_bus_handle, imu_candidates[i], 1000) == ESP_OK) {
-            if (std::find(s_scanned_i2c_devices.begin(), s_scanned_i2c_devices.end(), imu_candidates[i]) == s_scanned_i2c_devices.end()) {
-                s_scanned_i2c_devices.push_back(imu_candidates[i]);
-            }
-        }
     }
 
     std::sort(s_scanned_i2c_devices.begin(), s_scanned_i2c_devices.end());

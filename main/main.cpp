@@ -13,15 +13,27 @@
 
 static const char *TAG = "main";
 
+struct flag_stage_t {
+    flag_screen_t screen;
+    const char *name;
+    esp_err_t (*show)(void);
+};
+
+static const flag_stage_t FLAG_STAGES[] = {
+    {FLAG_SCREEN_LAP, "LAP", [] { return flag_display_show_lap(15, 52); }},
+    {FLAG_SCREEN_GREEN, "GREEN FLAG", flag_display_show_green},
+    {FLAG_SCREEN_RED, "RED FLAG", flag_display_show_red},
+    {FLAG_SCREEN_YELLOW, "YELLOW FLAG", flag_display_show_yellow},
+    {FLAG_SCREEN_BLUE, "BLUE FLAG", flag_display_show_blue},
+    {FLAG_SCREEN_DOUBLE_YELLOW, "DOUBLE YELLOW FLAG", flag_display_show_double_yellow},
+    {FLAG_SCREEN_SAFETY_CAR, "SAFETY CAR", flag_display_show_safety_car},
+    {FLAG_SCREEN_VSC, "VSC FLAG", flag_display_show_vsc},
+};
+
 static void flag_stage_task(void *arg)
 {
     (void)arg;
-        constexpr flag_screen_t stages[] = {FLAG_SCREEN_LAP, FLAG_SCREEN_GREEN, FLAG_SCREEN_RED, FLAG_SCREEN_YELLOW,
-                            FLAG_SCREEN_BLUE, FLAG_SCREEN_DOUBLE_YELLOW, FLAG_SCREEN_SAFETY_CAR,
-                            FLAG_SCREEN_VSC};
-    constexpr const char *stage_names[] = {"LAP", "GREEN FLAG", "RED FLAG", "YELLOW FLAG", "BLUE FLAG",
-                               "DOUBLE YELLOW FLAG", "SAFETY CAR", "VSC FLAG"};
-    constexpr size_t stage_count = sizeof(stages) / sizeof(stages[0]);
+    constexpr size_t stage_count = sizeof(FLAG_STAGES) / sizeof(FLAG_STAGES[0]);
     bool previous_pressed = false;
 
     while (true) {
@@ -38,47 +50,19 @@ static void flag_stage_task(void *arg)
             flag_screen_t current = flag_display_get_current_screen();
             size_t current_index = 0;
             for (size_t i = 0; i < stage_count; ++i) {
-                if (stages[i] == current) {
+                if (FLAG_STAGES[i].screen == current) {
                     current_index = i;
                     break;
                 }
             }
             size_t stage_index = (current_index + 1U) % stage_count;
-            switch (stages[stage_index]) {
-                case FLAG_SCREEN_LAP:
-                    err = flag_display_show_lap(15, 52);
-                    break;
-                case FLAG_SCREEN_GREEN:
-                    err = flag_display_show_green();
-                    break;
-                case FLAG_SCREEN_RED:
-                    err = flag_display_show_red();
-                    break;
-                case FLAG_SCREEN_YELLOW:
-                    err = flag_display_show_yellow("TURN 6");
-                    break;
-                case FLAG_SCREEN_BLUE:
-                    err = flag_display_show_blue("44");
-                    break;
-                case FLAG_SCREEN_DOUBLE_YELLOW:
-                    err = flag_display_show_double_yellow("TURN 6");
-                    break;
-                case FLAG_SCREEN_SAFETY_CAR:
-                    err = flag_display_show_safety_car();
-                    break;
-                case FLAG_SCREEN_VSC:
-                    err = flag_display_show_vsc();
-                    break;
-                default:
-                    err = ESP_ERR_NOT_SUPPORTED;
-                    break;
-            }
+            err = FLAG_STAGES[stage_index].show();
             if (err != ESP_OK) {
                 ESP_LOGE(TAG, "Stage change failed: %s", esp_err_to_name(err));
             } else {
                 app::SerialBoxPrinter printer("FLAG STAGE");
                 printer.add_body_bullet("Position: " + std::to_string(point.x) + ", " + std::to_string(point.y), 2U);
-                printer.add_body_bullet("Stage: " + std::string(stage_names[stage_index]), 2U);
+                printer.add_body_bullet("Stage: " + std::string(FLAG_STAGES[stage_index].name), 2U);
                 printer.print();
             }
         }

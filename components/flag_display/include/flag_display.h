@@ -37,15 +37,14 @@ esp_err_t flag_display_show_green(void);
 // Shows a full-screen solid red flag until another screen is selected.
 esp_err_t flag_display_show_red(void);
 
-// Shows the yellow flag with a blinking color square. turn_info is retained for source compatibility and ignored.
-esp_err_t flag_display_show_yellow(const char *turn_info);
+// Shows the yellow flag with a blinking color square.
+esp_err_t flag_display_show_yellow(void);
 
-// Shows the blue flag with a blinking color square. car_number is retained for source compatibility and ignored.
-esp_err_t flag_display_show_blue(const char *car_number);
+// Shows the blue flag with a blinking color square.
+esp_err_t flag_display_show_blue(void);
 
 // Shows the double yellow flag; two triangles split the square and blink alternately.
-// turn_info is retained for source compatibility and ignored.
-esp_err_t flag_display_show_double_yellow(const char *turn_info);
+esp_err_t flag_display_show_double_yellow(void);
 
 // Shows the yellow Safety Car flag with a centered "SC" mark.
 esp_err_t flag_display_show_safety_car(void);

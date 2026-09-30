@@ -166,6 +166,21 @@ static void load_screen_locked(lv_obj_t *screen, flag_screen_t screen_id) {
     s_state.current_screen = screen_id;
 }
 
+static esp_err_t show_screen(flag_view_t *view, flag_screen_t screen_id) {
+    if (view == nullptr || view->screen == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!lvgl_port_lock(0)) {
+        ESP_LOGE(TAG, "lvgl_port_lock failed");
+        return ESP_FAIL;
+    }
+
+    pause_flag_timers();
+    load_screen_locked(view->screen, screen_id);
+    lvgl_port_unlock();
+    return ESP_OK;
+}
+
 // Shows the LAP screen; assumes the LVGL port lock is already held.
 static void show_lap_locked(uint32_t current_lap, uint32_t total_laps) {
     s_state.current_lap = current_lap;
@@ -194,7 +209,7 @@ static void create_screen_base(flag_view_t *view) {
     lv_obj_set_style_border_width(header, 0, 0);
     lv_obj_set_style_pad_all(header, 0, 0);
     lv_obj_set_scrollbar_mode(header, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_clear_flag(header, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollable(header, false);
 
     lv_obj_t *logo = lv_image_create(header);
     lv_image_set_src(logo, &F1_LOGO_IMAGE);
@@ -325,24 +340,10 @@ esp_err_t flag_display_show_green(void) {
 }
 
 esp_err_t flag_display_show_red(void) {
-    if (s_state.red.screen == nullptr) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    if (!lvgl_port_lock(0)) {
-        ESP_LOGE(TAG, "lvgl_port_lock failed");
-        return ESP_FAIL;
-    }
-
-    pause_flag_timers();
-    load_screen_locked(s_state.red.screen, FLAG_SCREEN_RED);
-
-    lvgl_port_unlock();
-    return ESP_OK;
+    return show_screen(&s_state.red, FLAG_SCREEN_RED);
 }
 
-esp_err_t flag_display_show_yellow(const char *turn_info) {
-    (void)turn_info;
+esp_err_t flag_display_show_yellow(void) {
     if (s_state.yellow.screen == nullptr || s_state.yellow.square == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -363,8 +364,7 @@ esp_err_t flag_display_show_yellow(const char *turn_info) {
     return ESP_OK;
 }
 
-esp_err_t flag_display_show_blue(const char *car_number) {
-    (void)car_number;
+esp_err_t flag_display_show_blue(void) {
     if (s_state.blue.screen == nullptr || s_state.blue.square == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -385,8 +385,7 @@ esp_err_t flag_display_show_blue(const char *car_number) {
     return ESP_OK;
 }
 
-esp_err_t flag_display_show_double_yellow(const char *turn_info) {
-    (void)turn_info;
+esp_err_t flag_display_show_double_yellow(void) {
     if (s_state.double_yellow.screen == nullptr || s_state.double_yellow.square == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -407,35 +406,9 @@ esp_err_t flag_display_show_double_yellow(const char *turn_info) {
 }
 
 esp_err_t flag_display_show_safety_car(void) {
-    if (s_state.safety_car.screen == nullptr) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    if (!lvgl_port_lock(0)) {
-        ESP_LOGE(TAG, "lvgl_port_lock failed");
-        return ESP_FAIL;
-    }
-
-    pause_flag_timers();
-    load_screen_locked(s_state.safety_car.screen, FLAG_SCREEN_SAFETY_CAR);
-
-    lvgl_port_unlock();
-    return ESP_OK;
+    return show_screen(&s_state.safety_car, FLAG_SCREEN_SAFETY_CAR);
 }
 
 esp_err_t flag_display_show_vsc(void) {
-    if (s_state.vsc.screen == nullptr) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    if (!lvgl_port_lock(0)) {
-        ESP_LOGE(TAG, "lvgl_port_lock failed");
-        return ESP_FAIL;
-    }
-
-    pause_flag_timers();
-    load_screen_locked(s_state.vsc.screen, FLAG_SCREEN_VSC);
-
-    lvgl_port_unlock();
-    return ESP_OK;
+    return show_screen(&s_state.vsc, FLAG_SCREEN_VSC);
 }
