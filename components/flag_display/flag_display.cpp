@@ -13,17 +13,35 @@ static const char *TAG = "flag_display";
 
 // Bottom flag color fill is a square matching the panel width.
 static constexpr int32_t FLAG_SQUARE_SIZE = BSP_DISPLAY_PANEL_WIDTH;
-static constexpr int32_t FLAG_NAME_BAR_HEIGHT = BSP_DISPLAY_PANEL_HEIGHT - FLAG_SQUARE_SIZE;
+static constexpr int32_t HEADER_HEIGHT = BSP_DISPLAY_PANEL_HEIGHT - FLAG_SQUARE_SIZE;
+static constexpr int32_t LOGO_ROW_HEIGHT = 70;
+static constexpr int32_t LAP_ROW_HEIGHT = 40;
 static constexpr uint32_t BLINK_PERIOD_MS = 500;
 static constexpr uint32_t GREEN_AUTO_REVERT_MS = 10000; // 10 seconds
+
+extern "C" const uint8_t _binary_f1_logo_192x48_rgb565_start[];
+
+static const lv_image_dsc_t F1_LOGO_IMAGE = {
+    .header = {
+        .magic = LV_IMAGE_HEADER_MAGIC,
+        .cf = LV_COLOR_FORMAT_RGB565,
+        .flags = 0,
+        .w = 192,
+        .h = 48,
+        .stride = 384,
+        .reserved_2 = 0,
+    },
+    .data_size = 192 * 48 * 2,
+    .data = _binary_f1_logo_192x48_rgb565_start,
+    .reserved = nullptr,
+    .reserved_2 = nullptr,
+};
 
 struct flag_view_t {
     lv_obj_t *screen = nullptr;
     lv_obj_t *square = nullptr;
-    lv_obj_t *name_label = nullptr;
-    lv_obj_t *name_label_shadow = nullptr;
-    lv_obj_t *detail_label = nullptr;
-    lv_obj_t *detail_label_shadow = nullptr;
+    lv_obj_t *lap_header = nullptr;
+    lv_obj_t *time_header = nullptr;
 };
 
 struct flag_display_state_t {
@@ -40,6 +58,7 @@ struct flag_display_state_t {
     lv_timer_t *green_revert_timer = nullptr;
     uint32_t current_lap = 0;
     uint32_t total_laps = 0;
+    uint32_t remaining_seconds = 0;
     flag_screen_t current_screen = FLAG_SCREEN_LAP;
 };
 
@@ -89,31 +108,24 @@ static void blink_timer_cb(lv_timer_t *timer) {
     lv_obj_invalidate(square);
 }
 
-static void set_flag_name_and_detail(flag_view_t *view, const char *flag_name, const char *detail_prefix,
-                                     const char *detail) {
-    const bool has_detail = detail != nullptr && detail[0] != '\0';
-    lv_label_set_text(view->name_label, flag_name);
-    lv_label_set_text(view->name_label_shadow, flag_name);
-    if (has_detail) {
-        lv_label_set_text_fmt(view->detail_label, "%s%s", detail_prefix, detail);
-        lv_label_set_text_fmt(view->detail_label_shadow, "%s%s", detail_prefix, detail);
-    } else {
-        lv_label_set_text(view->detail_label, "");
-        lv_label_set_text(view->detail_label_shadow, "");
-    }
+static void set_lap_header(flag_view_t *view, uint32_t current_lap, uint32_t total_laps) {
+    lv_label_set_text_fmt(view->lap_header, "LAP %u/%u", (unsigned)current_lap, (unsigned)total_laps);
+}
 
-    lv_obj_update_layout(view->screen);
-    const lv_coord_t title_height = lv_obj_get_height(view->name_label);
-    const lv_coord_t detail_height = has_detail ? lv_obj_get_height(view->detail_label) : 0;
-    constexpr lv_coord_t DETAIL_GAP = 10;
-    const lv_coord_t group_height = title_height + (has_detail ? detail_height + DETAIL_GAP : 0);
-    const lv_coord_t group_top = (FLAG_NAME_BAR_HEIGHT - group_height) / 2;
-    lv_obj_align(view->name_label, LV_ALIGN_TOP_MID, 0, group_top);
-    lv_obj_align(view->name_label_shadow, LV_ALIGN_TOP_MID, 1, group_top);
-    if (has_detail) {
-        const lv_coord_t detail_top = group_top + title_height + DETAIL_GAP;
-        lv_obj_align(view->detail_label, LV_ALIGN_TOP_MID, 0, detail_top);
-        lv_obj_align(view->detail_label_shadow, LV_ALIGN_TOP_MID, 1, detail_top);
+static void set_time_header(flag_view_t *view, uint32_t remaining_seconds) {
+    const uint32_t hours = remaining_seconds / 3600U;
+    const uint32_t minutes = (remaining_seconds / 60U) % 60U;
+    const uint32_t seconds = remaining_seconds % 60U;
+    lv_label_set_text_fmt(view->time_header, "%02u:%02u:%02u", (unsigned)hours, (unsigned)minutes,
+                          (unsigned)seconds);
+}
+
+static void update_all_headers(void) {
+    flag_view_t *views[] = {&s_state.lap,          &s_state.green, &s_state.red, &s_state.yellow,
+                            &s_state.blue,         &s_state.double_yellow, &s_state.safety_car, &s_state.vsc};
+    for (flag_view_t *view : views) {
+        set_lap_header(view, s_state.current_lap, s_state.total_laps);
+        set_time_header(view, s_state.remaining_seconds);
     }
 }
 
@@ -158,11 +170,7 @@ static void load_screen_locked(lv_obj_t *screen, flag_screen_t screen_id) {
 static void show_lap_locked(uint32_t current_lap, uint32_t total_laps) {
     s_state.current_lap = current_lap;
     s_state.total_laps = total_laps;
-    lv_label_set_text_fmt(s_state.lap.name_label, "LAP\n%u/%u", (unsigned)current_lap, (unsigned)total_laps);
-    lv_label_set_text_fmt(s_state.lap.name_label_shadow, "LAP\n%u/%u", (unsigned)current_lap,
-                          (unsigned)total_laps);
-    lv_obj_center(s_state.lap.name_label);
-    lv_obj_align(s_state.lap.name_label_shadow, LV_ALIGN_CENTER, 1, 0);
+    update_all_headers();
     pause_flag_timers();
     load_screen_locked(s_state.lap.screen, FLAG_SCREEN_LAP);
 }
@@ -172,53 +180,53 @@ static void green_revert_timer_cb(lv_timer_t *timer) {
     show_lap_locked(s_state.current_lap, s_state.total_laps);
 }
 
-// Creates a black screen with the flag name bar (top) already attached; the caller adds the bottom square.
-static void create_flag_screen_base(const char *flag_name, flag_view_t *view) {
+static void create_screen_base(flag_view_t *view) {
     view->screen = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(view->screen, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(view->screen, LV_OPA_COVER, 0);
     lv_obj_set_style_pad_all(view->screen, 0, 0);
     lv_obj_set_style_border_width(view->screen, 0, 0);
 
-    lv_obj_t *name_bar = lv_obj_create(view->screen);
-    lv_obj_set_size(name_bar, BSP_DISPLAY_PANEL_WIDTH, FLAG_NAME_BAR_HEIGHT);
-    lv_obj_align(name_bar, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_bg_opa(name_bar, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(name_bar, 0, 0);
-    lv_obj_set_style_pad_all(name_bar, 0, 0);
-    lv_obj_set_scrollbar_mode(name_bar, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_clear_flag(name_bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *header = lv_obj_create(view->screen);
+    lv_obj_set_size(header, BSP_DISPLAY_PANEL_WIDTH, HEADER_HEIGHT);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_bg_opa(header, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(header, 0, 0);
+    lv_obj_set_style_pad_all(header, 0, 0);
+    lv_obj_set_scrollbar_mode(header, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(header, LV_OBJ_FLAG_SCROLLABLE);
 
-    // LVGL has no bold weight for built-in fonts; fake it by drawing an offset copy behind the label.
-    view->name_label_shadow = lv_label_create(name_bar);
-    lv_obj_set_style_text_color(view->name_label_shadow, lv_color_white(), 0);
-    lv_obj_set_style_text_font(view->name_label_shadow, &lv_font_montserrat_40, 0);
-    lv_obj_set_style_text_align(view->name_label_shadow, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(view->name_label_shadow, flag_name);
-    lv_obj_align(view->name_label_shadow, LV_ALIGN_CENTER, 1, 0);
+    lv_obj_t *logo = lv_image_create(header);
+    lv_image_set_src(logo, &F1_LOGO_IMAGE);
+    lv_obj_align(logo, LV_ALIGN_TOP_MID, 0, 8);
 
-    view->name_label = lv_label_create(name_bar);
-    lv_obj_set_style_text_color(view->name_label, lv_color_white(), 0);
-    lv_obj_set_style_text_font(view->name_label, &lv_font_montserrat_40, 0);
-    lv_obj_set_style_text_align(view->name_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(view->name_label, flag_name);
-    lv_obj_align(view->name_label, LV_ALIGN_CENTER, 0, 0);
+    view->lap_header = lv_label_create(header);
+    lv_obj_set_width(view->lap_header, BSP_DISPLAY_PANEL_WIDTH);
+    lv_obj_set_style_text_color(view->lap_header, lv_color_white(), 0);
+    lv_obj_set_style_text_font(view->lap_header, &lv_font_montserrat_36, 0);
+    lv_obj_set_style_text_align(view->lap_header, LV_TEXT_ALIGN_CENTER, 0);
+    set_lap_header(view, s_state.current_lap, s_state.total_laps);
+    lv_obj_update_layout(view->lap_header);
+    const lv_coord_t lap_label_height = lv_obj_get_height(view->lap_header);
+    ESP_LOGI(TAG, "lap_label_height: %d", lap_label_height);
+    const lv_coord_t lap_label_top = LOGO_ROW_HEIGHT + (LAP_ROW_HEIGHT - lap_label_height) / 2;
+    lv_obj_align(view->lap_header, LV_ALIGN_TOP_MID, 0, lap_label_top);
 
-    view->detail_label_shadow = lv_label_create(name_bar);
-    lv_obj_set_style_text_color(view->detail_label_shadow, lv_color_white(), 0);
-    lv_obj_set_style_text_font(view->detail_label_shadow, &lv_font_montserrat_36, 0);
-    lv_obj_set_style_text_align(view->detail_label_shadow, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(view->detail_label_shadow, "");
-
-    view->detail_label = lv_label_create(name_bar);
-    lv_obj_set_style_text_color(view->detail_label, lv_color_white(), 0);
-    lv_obj_set_style_text_font(view->detail_label, &lv_font_montserrat_36, 0);
-    lv_obj_set_style_text_align(view->detail_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(view->detail_label, "");
+    view->time_header = lv_label_create(header);
+    lv_obj_set_width(view->time_header, BSP_DISPLAY_PANEL_WIDTH);
+    lv_obj_set_style_text_color(view->time_header, lv_color_white(), 0);
+    lv_obj_set_style_text_font(view->time_header, &lv_font_montserrat_36, 0);
+    lv_obj_set_style_text_align(view->time_header, LV_TEXT_ALIGN_CENTER, 0);
+    set_time_header(view, s_state.remaining_seconds);
+    const int32_t time_row_top = LOGO_ROW_HEIGHT + LAP_ROW_HEIGHT;
+    lv_obj_update_layout(view->time_header);
+    const lv_coord_t time_label_height = lv_obj_get_height(view->time_header);
+    const lv_coord_t time_label_top = time_row_top + (HEADER_HEIGHT - time_row_top - time_label_height) / 2;
+    lv_obj_align(view->time_header, LV_ALIGN_TOP_MID, 0, time_label_top - 8);
 }
 
-static void create_flag_screen(const char *flag_name, flag_view_t *view, matrix_pattern_t *pattern) {
-    create_flag_screen_base(flag_name, view);
+static void create_flag_screen(flag_view_t *view, matrix_pattern_t *pattern) {
+    create_screen_base(view);
 
     view->square = lv_obj_create(view->screen);
     lv_obj_set_size(view->square, FLAG_SQUARE_SIZE, FLAG_SQUARE_SIZE);
@@ -237,32 +245,15 @@ esp_err_t flag_display_init(void) {
         return ESP_FAIL;
     }
 
-    s_state.lap.screen = lv_obj_create(nullptr);
-    lv_obj_set_style_bg_color(s_state.lap.screen, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(s_state.lap.screen, LV_OPA_COVER, 0);
+    create_screen_base(&s_state.lap);
 
-    // LVGL has no bold weight for built-in fonts; fake it by drawing an offset copy behind the label.
-    s_state.lap.name_label_shadow = lv_label_create(s_state.lap.screen);
-    lv_obj_set_style_text_color(s_state.lap.name_label_shadow, lv_color_white(), 0);
-    lv_obj_set_style_text_font(s_state.lap.name_label_shadow, &lv_font_montserrat_48, 0);
-    lv_obj_set_style_text_align(s_state.lap.name_label_shadow, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(s_state.lap.name_label_shadow, "LAP -/-");
-
-    s_state.lap.name_label = lv_label_create(s_state.lap.screen);
-    lv_obj_set_style_text_color(s_state.lap.name_label, lv_color_white(), 0);
-    lv_obj_set_style_text_font(s_state.lap.name_label, &lv_font_montserrat_48, 0);
-    lv_obj_set_style_text_align(s_state.lap.name_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(s_state.lap.name_label, "LAP -/-");
-    lv_obj_center(s_state.lap.name_label);
-    lv_obj_align(s_state.lap.name_label_shadow, LV_ALIGN_CENTER, 1, 0);
-
-    create_flag_screen("GREEN FLAG", &s_state.green, &GREEN_MATRIX_PATTERN);
-    create_flag_screen("RED FLAG", &s_state.red, &RED_MATRIX_PATTERN);
-    create_flag_screen("YELLOW FLAG", &s_state.yellow, &YELLOW_MATRIX_PATTERN);
-    create_flag_screen("BLUE FLAG", &s_state.blue, &BLUE_MATRIX_PATTERN);
-    create_flag_screen("DOUBLE\nYELLOW FLAG", &s_state.double_yellow, &DOUBLE_YELLOW_MATRIX_PATTERN);
-    create_flag_screen("SAFETY CAR", &s_state.safety_car, &SAFETY_CAR_MATRIX_PATTERN);
-    create_flag_screen("VIRTUAL\nSAFETY CAR", &s_state.vsc, &VSC_MATRIX_PATTERN);
+    create_flag_screen(&s_state.green, &GREEN_MATRIX_PATTERN);
+    create_flag_screen(&s_state.red, &RED_MATRIX_PATTERN);
+    create_flag_screen(&s_state.yellow, &YELLOW_MATRIX_PATTERN);
+    create_flag_screen(&s_state.blue, &BLUE_MATRIX_PATTERN);
+    create_flag_screen(&s_state.double_yellow, &DOUBLE_YELLOW_MATRIX_PATTERN);
+    create_flag_screen(&s_state.safety_car, &SAFETY_CAR_MATRIX_PATTERN);
+    create_flag_screen(&s_state.vsc, &VSC_MATRIX_PATTERN);
 
     s_state.flag_blink_timer = lv_timer_create(blink_timer_cb, BLINK_PERIOD_MS, nullptr);
     lv_timer_pause(s_state.flag_blink_timer);
@@ -282,8 +273,7 @@ flag_screen_t flag_display_get_current_screen(void) {
 }
 
 esp_err_t flag_display_show_lap(uint32_t current_lap, uint32_t total_laps) {
-    if (s_state.lap.screen == nullptr || s_state.lap.name_label == nullptr ||
-        s_state.lap.name_label_shadow == nullptr) {
+    if (s_state.lap.screen == nullptr || s_state.lap.lap_header == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -293,6 +283,23 @@ esp_err_t flag_display_show_lap(uint32_t current_lap, uint32_t total_laps) {
     }
 
     show_lap_locked(current_lap, total_laps);
+
+    lvgl_port_unlock();
+    return ESP_OK;
+}
+
+esp_err_t flag_display_update_race_time(uint32_t remaining_seconds) {
+    if (s_state.lap.screen == nullptr || s_state.lap.time_header == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (!lvgl_port_lock(0)) {
+        ESP_LOGE(TAG, "lvgl_port_lock failed");
+        return ESP_FAIL;
+    }
+
+    s_state.remaining_seconds = remaining_seconds;
+    update_all_headers();
 
     lvgl_port_unlock();
     return ESP_OK;
@@ -335,8 +342,8 @@ esp_err_t flag_display_show_red(void) {
 }
 
 esp_err_t flag_display_show_yellow(const char *turn_info) {
-    if (s_state.yellow.screen == nullptr || s_state.yellow.square == nullptr ||
-        s_state.yellow.name_label == nullptr || s_state.yellow.name_label_shadow == nullptr) {
+    (void)turn_info;
+    if (s_state.yellow.screen == nullptr || s_state.yellow.square == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -344,8 +351,6 @@ esp_err_t flag_display_show_yellow(const char *turn_info) {
         ESP_LOGE(TAG, "lvgl_port_lock failed");
         return ESP_FAIL;
     }
-
-    set_flag_name_and_detail(&s_state.yellow, "YELLOW FLAG", "", turn_info);
 
     YELLOW_MATRIX_PATTERN.visible = true;
     lv_obj_invalidate(s_state.yellow.square);
@@ -359,8 +364,8 @@ esp_err_t flag_display_show_yellow(const char *turn_info) {
 }
 
 esp_err_t flag_display_show_blue(const char *car_number) {
-    if (s_state.blue.screen == nullptr || s_state.blue.square == nullptr ||
-        s_state.blue.name_label == nullptr || s_state.blue.name_label_shadow == nullptr) {
+    (void)car_number;
+    if (s_state.blue.screen == nullptr || s_state.blue.square == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -368,8 +373,6 @@ esp_err_t flag_display_show_blue(const char *car_number) {
         ESP_LOGE(TAG, "lvgl_port_lock failed");
         return ESP_FAIL;
     }
-
-    set_flag_name_and_detail(&s_state.blue, "BLUE FLAG", "CAR ", car_number);
 
     BLUE_MATRIX_PATTERN.visible = true;
     lv_obj_invalidate(s_state.blue.square);
@@ -383,8 +386,8 @@ esp_err_t flag_display_show_blue(const char *car_number) {
 }
 
 esp_err_t flag_display_show_double_yellow(const char *turn_info) {
-    if (s_state.double_yellow.screen == nullptr || s_state.double_yellow.square == nullptr ||
-        s_state.double_yellow.name_label == nullptr || s_state.double_yellow.name_label_shadow == nullptr) {
+    (void)turn_info;
+    if (s_state.double_yellow.screen == nullptr || s_state.double_yellow.square == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -392,8 +395,6 @@ esp_err_t flag_display_show_double_yellow(const char *turn_info) {
         ESP_LOGE(TAG, "lvgl_port_lock failed");
         return ESP_FAIL;
     }
-
-    set_flag_name_and_detail(&s_state.double_yellow, "DOUBLE\nYELLOW FLAG", "", turn_info);
 
     pause_flag_timers();
     DOUBLE_YELLOW_MATRIX_PATTERN.triangle_state = false;

@@ -25,8 +25,11 @@ esp_err_t flag_display_init(void);
 // Returns the currently shown screen, including changes made internally (e.g. green auto-revert).
 flag_screen_t flag_display_get_current_screen(void);
 
-// Shows the default idle screen: full-screen "LAP current/total".
+// Shows the default idle screen and updates the shared header lap count.
 esp_err_t flag_display_show_lap(uint32_t current_lap, uint32_t total_laps);
+
+// Updates the shared header race time from the remaining duration in seconds.
+esp_err_t flag_display_update_race_time(uint32_t remaining_seconds);
 
 // Shows a full-screen green flag, used briefly on any flag-clear transition.
 esp_err_t flag_display_show_green(void);
@@ -34,16 +37,14 @@ esp_err_t flag_display_show_green(void);
 // Shows a full-screen solid red flag until another screen is selected.
 esp_err_t flag_display_show_red(void);
 
-// Shows the yellow flag with a blinking color square; optional turn_info appears below the flag name.
-// Pass nullptr or an empty string to omit it, e.g. "TURN 6".
+// Shows the yellow flag with a blinking color square. turn_info is retained for source compatibility and ignored.
 esp_err_t flag_display_show_yellow(const char *turn_info);
 
-// Shows the blue flag with a blinking color square; optional car_number appears below the flag name.
-// Pass nullptr or an empty string to omit it, e.g. "44".
+// Shows the blue flag with a blinking color square. car_number is retained for source compatibility and ignored.
 esp_err_t flag_display_show_blue(const char *car_number);
 
 // Shows the double yellow flag; two triangles split the square and blink alternately.
-// Optional turn_info appears below the flag name. Pass nullptr or an empty string to omit it, e.g. "TURN 6".
+// turn_info is retained for source compatibility and ignored.
 esp_err_t flag_display_show_double_yellow(const char *turn_info);
 
 // Shows the yellow Safety Car flag with a centered "SC" mark.
