@@ -10,13 +10,16 @@ from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input", type=Path, help="Source PNG")
+    parser.add_argument("input", type=Path, help="Source image")
     parser.add_argument("output", type=Path, help="Destination .rgb565 file")
     parser.add_argument("--height", type=int, required=True, help="Output height in pixels")
+    parser.add_argument("--width", type=int, help="Output canvas width in pixels")
     args = parser.parse_args()
 
     if args.height <= 0:
         parser.error("--height must be greater than zero")
+    if args.width is not None and args.width <= 0:
+        parser.error("--width must be greater than zero")
     if not args.input.is_file():
         parser.error(f"input file does not exist: {args.input}")
 
@@ -30,14 +33,20 @@ def main():
         resized_png = temp_path / "resized.png"
         rgb_path = temp_path / "pixels.rgb"
 
-        subprocess.run(
+        convert_args = [
+            convert,
+            str(args.input),
+            "-trim",
+            "+repage",
+            "-resize",
+            f"{args.width}x{args.height}" if args.width is not None else f"x{args.height}",
+        ]
+        if args.width is not None:
+            convert_args.extend(
+                ["-background", "black", "-gravity", "center", "-extent", f"{args.width}x{args.height}"]
+            )
+        convert_args.extend(
             [
-                convert,
-                str(args.input),
-                "-trim",
-                "+repage",
-                "-resize",
-                f"x{args.height}",
                 "-background",
                 "black",
                 "-alpha",
@@ -47,9 +56,9 @@ def main():
                 "-depth",
                 "8",
                 f"PNG24:{resized_png}",
-            ],
-            check=True,
+            ]
         )
+        subprocess.run(convert_args, check=True)
         dimensions = subprocess.check_output(
             [identify, "-format", "%w %h", str(resized_png)], text=True
         )

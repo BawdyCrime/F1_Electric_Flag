@@ -19,8 +19,26 @@ struct flag_stage_t {
     esp_err_t (*show)(void);
 };
 
+// Demo grid for the 2026 season; clipped by flag_display to however many rows fit on screen.
+static const flag_interval_row_t DEMO_INTERVAL_ROWS[] = {
+    {1, FLAG_TEAM_RED_BULL_RACING, "VER", "Interval", 'M'},
+    {2, FLAG_TEAM_MCLAREN, "NOR", "+1.842", 'M'},
+    {3, FLAG_TEAM_FERRARI, "LEC", "+4.391", 'H'},
+    {4, FLAG_TEAM_MERCEDES, "RUS", "+6.204", 'H'},
+    {5, FLAG_TEAM_ASTON_MARTIN, "ALO", "+9.873", 'M'},
+    {6, FLAG_TEAM_ALPINE, "GAS", "+12.55", 'S'},
+    {7, FLAG_TEAM_WILLIAMS, "ALB", "+15.02", 'H'},
+    {8, FLAG_TEAM_RACING_BULLS, "TSU", "+18.44", 'M'},
+    {9, FLAG_TEAM_AUDI, "BOR", "+21.90", 'H'},
+    {10, FLAG_TEAM_HAAS, "HUL", "+25.11", 'M'},
+    {11, FLAG_TEAM_CADILLAC, "PER", "+28.63", 'H'},
+};
+static constexpr size_t DEMO_INTERVAL_ROW_COUNT =
+    sizeof(DEMO_INTERVAL_ROWS) / sizeof(DEMO_INTERVAL_ROWS[0]);
+
 static const flag_stage_t FLAG_STAGES[] = {
-    {FLAG_SCREEN_LAP, "LAP", [] { return flag_display_show_lap(15, 52); }},
+    {FLAG_SCREEN_INTERVAL, "INTERVAL",
+     [] { return flag_display_show_interval(15, 52, DEMO_INTERVAL_ROWS, DEMO_INTERVAL_ROW_COUNT); }},
     {FLAG_SCREEN_GREEN, "GREEN FLAG", flag_display_show_green},
     {FLAG_SCREEN_RED, "RED FLAG", flag_display_show_red},
     {FLAG_SCREEN_YELLOW, "YELLOW FLAG", flag_display_show_yellow},
@@ -104,9 +122,9 @@ extern "C" void app_main(void)
         return;
     }
 
-    err = flag_display_show_lap(15, 52);
+    err = flag_display_show_interval(15, 52, DEMO_INTERVAL_ROWS, DEMO_INTERVAL_ROW_COUNT);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Flag display show_lap failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Flag display show_interval failed: %s", esp_err_to_name(err));
         return;
     }
 

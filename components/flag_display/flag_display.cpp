@@ -3,6 +3,7 @@
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "flag_header.h"
+#include "flag_interval.h"
 #include "flag_panel.h"
 #include "lvgl.h"
 #include "matrix_pattern.h"
@@ -15,7 +16,7 @@ static constexpr uint32_t BLINK_PERIOD_MS = 500;
 static constexpr uint32_t GREEN_AUTO_REVERT_MS = 10000; // 10 seconds
 
 struct flag_display_state_t {
-    flag_view_t lap;
+    flag_view_t interval;
     flag_view_t green;
     flag_view_t red;
     flag_view_t yellow;
@@ -29,7 +30,7 @@ struct flag_display_state_t {
     uint32_t current_lap = 0;
     uint32_t total_laps = 0;
     uint32_t remaining_seconds = 0;
-    flag_screen_t current_screen = FLAG_SCREEN_LAP;
+    flag_screen_t current_screen = FLAG_SCREEN_INTERVAL;
 };
 
 static flag_display_state_t s_state;
@@ -79,7 +80,7 @@ static void blink_timer_cb(lv_timer_t *timer) {
 }
 
 static void update_all_headers(void) {
-    flag_view_t *views[] = {&s_state.lap,          &s_state.green, &s_state.red, &s_state.yellow,
+    flag_view_t *views[] = {&s_state.interval,     &s_state.green, &s_state.red, &s_state.yellow,
                             &s_state.blue,         &s_state.double_yellow, &s_state.safety_car, &s_state.vsc};
     for (flag_view_t *view : views) {
         flag_header_update(view, s_state.current_lap, s_state.total_laps, s_state.remaining_seconds);
@@ -121,18 +122,18 @@ static esp_err_t show_screen(flag_view_t *view, flag_screen_t screen_id) {
     return ESP_OK;
 }
 
-// Shows the LAP screen; assumes the LVGL port lock is already held.
-static void show_lap_locked(uint32_t current_lap, uint32_t total_laps) {
+// Shows the interval screen; assumes the LVGL port lock is already held.
+static void show_interval_locked(uint32_t current_lap, uint32_t total_laps) {
     s_state.current_lap = current_lap;
     s_state.total_laps = total_laps;
     update_all_headers();
     pause_flag_timers();
-    load_screen_locked(s_state.lap.screen, FLAG_SCREEN_LAP);
+    load_screen_locked(s_state.interval.screen, FLAG_SCREEN_INTERVAL);
 }
 
 static void green_revert_timer_cb(lv_timer_t *timer) {
     (void)timer;
-    show_lap_locked(s_state.current_lap, s_state.total_laps);
+    show_interval_locked(s_state.current_lap, s_state.total_laps);
 }
 
 esp_err_t flag_display_init(void) {
@@ -141,7 +142,8 @@ esp_err_t flag_display_init(void) {
         return ESP_FAIL;
     }
 
-    flag_header_create(&s_state.lap, s_state.current_lap, s_state.total_laps, s_state.remaining_seconds);
+    flag_header_create(&s_state.interval, s_state.current_lap, s_state.total_laps, s_state.remaining_seconds);
+    flag_interval_create(&s_state.interval);
 
     flag_view_t *flag_views[] = {&s_state.green, &s_state.red, &s_state.yellow, &s_state.blue,
                                  &s_state.double_yellow, &s_state.safety_car, &s_state.vsc};
@@ -170,8 +172,9 @@ flag_screen_t flag_display_get_current_screen(void) {
     return s_state.current_screen;
 }
 
-esp_err_t flag_display_show_lap(uint32_t current_lap, uint32_t total_laps) {
-    if (s_state.lap.screen == nullptr || s_state.lap.lap_header == nullptr) {
+esp_err_t flag_display_show_interval(uint32_t current_lap, uint32_t total_laps,
+                                     const flag_interval_row_t *rows, size_t row_count) {
+    if (s_state.interval.screen == nullptr || s_state.interval.lap_header == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -180,14 +183,15 @@ esp_err_t flag_display_show_lap(uint32_t current_lap, uint32_t total_laps) {
         return ESP_FAIL;
     }
 
-    show_lap_locked(current_lap, total_laps);
+    flag_interval_update(&s_state.interval, rows, row_count);
+    show_interval_locked(current_lap, total_laps);
 
     lvgl_port_unlock();
     return ESP_OK;
 }
 
 esp_err_t flag_display_update_race_time(uint32_t remaining_seconds) {
-    if (s_state.lap.screen == nullptr || s_state.lap.time_header == nullptr) {
+    if (s_state.interval.screen == nullptr || s_state.interval.time_header == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
 
