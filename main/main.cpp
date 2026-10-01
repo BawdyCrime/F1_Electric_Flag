@@ -4,6 +4,7 @@
 #include "bsp_display.h"
 #include "bsp_expander.h"
 #include "bsp_pmic.h"
+#include "bsp_rtc.h"
 #include "bsp_touch.h"
 #include "bsp_wifi.h"
 #include "flag_display.h"
@@ -41,6 +42,11 @@ static void wifi_connected_callback(const bsp_wifi_status_t *status, void *conte
     printer.add_body_bullet("Gateway: " + std::string(status->gateway));
     printer.add_body_bullet("DNS: " + std::string(status->dns_server));
     printer.print();
+
+    esp_err_t err = bsp_rtc_start_internet_sync();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "RTC internet time sync start failed: %s", esp_err_to_name(err));
+    }
 }
 
 struct flag_stage_t {
@@ -129,6 +135,13 @@ static esp_err_t bsp_init(void)
     } else {
         ESP_LOGE(TAG, "Board init failed: %s", esp_err_to_name(err));
         return err;
+    }
+
+    err = bsp_rtc_init();
+    if (err == ESP_OK) {
+        bsp_rtc_print_status();
+    } else {
+        ESP_LOGE(TAG, "RTC init failed: %s", esp_err_to_name(err));
     }
 
     err = bsp_pmic_init();
