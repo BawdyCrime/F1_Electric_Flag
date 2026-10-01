@@ -7,6 +7,9 @@
 #include "esp_lcd_touch.h"
 #include "serial_box_printer.h"
 
+#include <cstdio>
+#include <string>
+
 static esp_lcd_panel_io_handle_t s_touch_io = nullptr;
 static esp_lcd_touch_handle_t s_touch = nullptr;
 
@@ -23,9 +26,10 @@ esp_err_t bsp_touch_init(uint16_t width, uint16_t height) {
         return ESP_ERR_INVALID_STATE;
     }
 
+    constexpr uint32_t touch_i2c_clock_hz = 400000U;
     esp_lcd_panel_io_i2c_config_t io_config = {};
     io_config.dev_addr = ESP_LCD_TOUCH_IO_I2C_AXS15231B_ADDRESS;
-    io_config.scl_speed_hz = 400000;
+    io_config.scl_speed_hz = touch_i2c_clock_hz;
     io_config.control_phase_bytes = 1;
     io_config.dc_bit_offset = 0;
     io_config.lcd_cmd_bits = 8;
@@ -47,10 +51,29 @@ esp_err_t bsp_touch_init(uint16_t width, uint16_t height) {
         return err;
     }
 
+    const bsp_board_config_t *board_config = bsp_board_get_config();
+    char bus_info[96];
+    char device_info[96];
+    char gpio_info[96];
+    std::snprintf(bus_info, sizeof(bus_info), "I2C%d SDA=GPIO%d SCL=GPIO%d",
+                  board_config->i2c_port, static_cast<int>(board_config->i2c_sda_gpio),
+                  static_cast<int>(board_config->i2c_scl_gpio));
+    std::snprintf(device_info, sizeof(device_info), "Address 0x%02X, device clock %u kHz",
+                  static_cast<unsigned>(ESP_LCD_TOUCH_IO_I2C_AXS15231B_ADDRESS),
+                  static_cast<unsigned>(touch_i2c_clock_hz / 1000U));
+    std::snprintf(gpio_info, sizeof(gpio_info), "INT=%s, RST=%s",
+                  board_config->touch_int_gpio == GPIO_NUM_NC ? "NC" : "routed",
+                  board_config->touch_rst_gpio == GPIO_NUM_NC ? "NC" : "routed");
+
     app::SerialBoxPrinter printer("TOUCH STATUS");
-    printer.add_body_bullet("Controller: AXS15231B", 2U);
-    printer.add_body_bullet("I2C address: 0x3B at 400 kHz", 2U);
-    printer.add_body_bullet("Polling enabled; interrupt/reset pins are not routed", 2U);
+    printer.add_body_bullet("Controller: AXS15231B initialized", 2U);
+    printer.add_body_bullet("Bus: " + std::string(bus_info), 2U);
+    printer.add_body_bullet("Device: " + std::string(device_info), 2U);
+    printer.add_body_bullet("Coordinates: X=0.." + std::to_string(width - 1U) +
+                            ", Y=0.." + std::to_string(height - 1U), 2U);
+    printer.add_body_bullet("Read capacity: 1 touch point per call", 2U);
+    printer.add_body_bullet("GPIO: " + std::string(gpio_info), 2U);
+    printer.add_body_bullet("Input: application-polled", 2U);
     printer.print();
     return ESP_OK;
 }

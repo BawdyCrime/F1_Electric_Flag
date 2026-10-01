@@ -4,3 +4,4 @@ managed_components/
 *.log
 .DS_Store
 sdkconfig.old
+*.local.h

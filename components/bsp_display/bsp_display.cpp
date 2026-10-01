@@ -15,6 +15,7 @@
 #include "esp_heap_caps.h"
 
 #include <algorithm>
+#include <cstdio>
 
 static const char *TAG = "bsp_display";
 static esp_lcd_panel_io_handle_t s_panel_io = nullptr;
@@ -25,7 +26,7 @@ static bool s_spi_bus_initialized = false;
 extern "C" const axs15231b_lcd_init_cmd_t *bsp_display_get_init_commands(size_t *count);
 
 static esp_err_t display_direct_color_test(void) {
-    constexpr uint32_t rows_per_chunk = BSP_DISPLAY_PANEL_HEIGHT/2;
+    constexpr uint32_t rows_per_chunk = BSP_DISPLAY_PANEL_HEIGHT/4;
     constexpr uint16_t test_color = 0x07E0;
     const size_t pixel_count = BSP_DISPLAY_PANEL_WIDTH * rows_per_chunk;
     auto *pixels = static_cast<uint16_t *>(heap_caps_malloc(pixel_count * sizeof(uint16_t),
@@ -176,13 +177,28 @@ esp_err_t bsp_display_init(void) {
     }
 
     char display_info[128];
+    char display_bus_info[128];
+    char display_protocol_info[128];
+    char lvgl_info[128];
     std::snprintf(display_info, sizeof(display_info), "Host=%d, SCLK=%d, D0..D3=%d/%d/%d/%d, CS=%d",
                   BSP_SPI_HOST, BSP_SPI_SCLK_GPIO, BSP_SPI_QSPI_IO0_GPIO, BSP_SPI_QSPI_IO1_GPIO,
                   BSP_SPI_QSPI_IO2_GPIO, BSP_SPI_QSPI_IO3_GPIO, BSP_SPI_CS_GPIO);
+    std::snprintf(display_bus_info, sizeof(display_bus_info), "QSPI x4, SPI mode 3, %u MHz",
+                  static_cast<unsigned>(BSP_SPI_CLOCK_HZ / 1000000U));
+    std::snprintf(display_protocol_info, sizeof(display_protocol_info),
+                  "16-bit RGB565, %u-bit commands, %u-bit parameters, %u init commands",
+                  32U, 8U, static_cast<unsigned>(init_command_count));
+    std::snprintf(lvgl_info, sizeof(lvgl_info), "LVGL full refresh, single DMA/PSRAM buffer (%u pixels)",
+                  static_cast<unsigned>(BSP_DISPLAY_PANEL_WIDTH * BSP_DISPLAY_PANEL_HEIGHT));
     app::SerialBoxPrinter printer("DISPLAY STATUS");
-    printer.add_body_bullet("AXS15231B initialized; backlight enabled", 2U);
-    printer.add_body_bullet("Direct RGB565 panel test sent", 2U);
-    printer.add_body_bullet(display_info, 2U);
+    printer.add_body_bullet("Controller: AXS15231B initialized", 2U);
+    printer.add_body_bullet("Backlight: enabled", 2U);
+    printer.add_body_bullet("Panel: " + std::to_string(BSP_DISPLAY_PANEL_WIDTH) + "x" +
+                            std::to_string(BSP_DISPLAY_PANEL_HEIGHT) + " pixels", 2U);
+    printer.add_body_bullet("Bus: " + std::string(display_bus_info), 2U);
+    printer.add_body_bullet("Format: " + std::string(display_protocol_info), 2U);
+    printer.add_body_bullet("Pins: " + std::string(display_info), 2U);
+    printer.add_body_bullet("LVGL: " + std::string(lvgl_info), 2U);
     printer.print();
     return ESP_OK;
 }
