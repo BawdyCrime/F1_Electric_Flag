@@ -2,6 +2,7 @@
 
 #include "bsp_board.h"
 #include "bsp_display.h"
+#include "bsp_expander.h"
 #include "bsp_pmic.h"
 #include "bsp_touch.h"
 #include "bsp_wifi.h"
@@ -118,46 +119,78 @@ static void flag_stage_task(void *arg)
     }
 }
 
-extern "C" void app_main(void)
+static esp_err_t bsp_init(void)
 {
     esp_err_t err = ESP_OK;
     
-    // Initialize the board peripherals
     err = bsp_board_init();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "bsp_board_init failed: %s", esp_err_to_name(err));
-        return;
+    if (err == ESP_OK) {
+        bsp_board_print_status();
+    } else {
+        ESP_LOGE(TAG, "Board init failed: %s", esp_err_to_name(err));
+        return err;
     }
 
-    // Scan the I2C bus for connected devices
-    err = bsp_board_i2c_scan();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "I2C scan failed: %s", esp_err_to_name(err));
-        return;
-    }
-
-    // Initialize the PMIC (Power Management IC)
     err = bsp_pmic_init();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "PMIC validation failed: %s", esp_err_to_name(err));
-        return;
+    if (err == ESP_OK) {
+        bsp_pmic_print_status();
+    } else {
+        ESP_LOGE(TAG, "PMIC init failed: %s", esp_err_to_name(err));
+        return err;
     }
 
-    bsp_board_print_info();
-    bsp_board_print_peripheral();
-    bsp_pmic_print_status();
-
-    // Initialize Wi-Fi
-    err = bsp_wifi_start(F1_WIFI_SSID, F1_WIFI_PASSWORD, wifi_connected_callback, nullptr);
+    err = bsp_expander_init();
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Wi-Fi startup failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Expander init/status failed: %s", esp_err_to_name(err));
+        return err;
     }
-    vTaskDelay(pdMS_TO_TICKS(3000));
 
-    // Initialize the display
+    err = bsp_expander_pulse_lcd_reset();
+    if (err == ESP_OK) {
+        bsp_expander_print_status();
+    } else {
+        ESP_LOGE(TAG, "Expander pulse LCD reset failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
     err = bsp_display_init();
-    if (err != ESP_OK) {
+    if (err == ESP_OK) {
+        bsp_display_print_status();
+    } else {
         ESP_LOGE(TAG, "Display init failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    err = bsp_touch_init(BSP_DISPLAY_PANEL_WIDTH, BSP_DISPLAY_PANEL_HEIGHT);
+    if (err == ESP_OK) {
+        bsp_touch_print_status();
+    } else {
+        ESP_LOGE(TAG, "Touch init failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    err = bsp_wifi_init(F1_WIFI_SSID, F1_WIFI_PASSWORD, wifi_connected_callback, nullptr);
+    if (err == ESP_OK) {
+        bsp_wifi_print_status();
+    } else {
+        ESP_LOGE(TAG, "Wi-Fi init failed: %s", esp_err_to_name(err));
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(3000));
+    return ESP_OK;
+}
+
+extern "C" void app_main(void)
+{
+    esp_err_t err = ESP_OK;
+
+    // Print board information
+    bsp_board_print_info();
+
+    // Initialize the board support package (BSP)
+    err = bsp_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "BSP initialization failed: %s", esp_err_to_name(err));
         return;
     }
 
@@ -172,13 +205,6 @@ extern "C" void app_main(void)
     err = flag_display_show_interval(15, 52, DEMO_INTERVAL_ROWS, DEMO_INTERVAL_ROW_COUNT);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Flag display show_interval failed: %s", esp_err_to_name(err));
-        return;
-    }
-
-    // Initialize the touch panel
-    err = bsp_touch_init(BSP_DISPLAY_PANEL_WIDTH, BSP_DISPLAY_PANEL_HEIGHT);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Touch initialization failed: %s", esp_err_to_name(err));
         return;
     }
 

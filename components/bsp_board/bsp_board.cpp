@@ -13,6 +13,7 @@
 
 static const char *TAG = "bsp_board";
 static i2c_master_bus_handle_t s_i2c_bus_handle = NULL;
+static bool s_board_initialized = false;
 static std::vector<uint8_t> s_scanned_i2c_devices;
 static const bsp_board_config_t s_board_config = {
     .i2c_port = BSP_I2C_PORT,
@@ -104,6 +105,10 @@ static esp_err_t bsp_board_configure_gpio(gpio_num_t gpio, bool output, bool pul
 }
 
 esp_err_t bsp_board_init(void) {
+    if (s_board_initialized) {
+        return ESP_OK;
+    }
+
     esp_err_t err = ESP_OK;
 
     err = bsp_board_configure_gpio(BSP_TOUCH_INT_GPIO, false, true, false);
@@ -127,24 +132,26 @@ esp_err_t bsp_board_init(void) {
         return err;
     }
 
-    i2c_master_bus_config_t bus_cfg = {
-        .i2c_port = BSP_I2C_PORT,
-        .sda_io_num = BSP_I2C_SDA_GPIO,
-        .scl_io_num = BSP_I2C_SCL_GPIO,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .intr_priority = 0,
-        .trans_queue_depth = 0,
-        .flags = {
-            .enable_internal_pullup = true,
-            .allow_pd = false,
-        },
-    };
+    if (s_i2c_bus_handle == NULL) {
+        i2c_master_bus_config_t bus_cfg = {
+            .i2c_port = BSP_I2C_PORT,
+            .sda_io_num = BSP_I2C_SDA_GPIO,
+            .scl_io_num = BSP_I2C_SCL_GPIO,
+            .clk_source = I2C_CLK_SRC_DEFAULT,
+            .glitch_ignore_cnt = 7,
+            .intr_priority = 0,
+            .trans_queue_depth = 0,
+            .flags = {
+                .enable_internal_pullup = true,
+                .allow_pd = false,
+            },
+        };
 
-    err = i2c_new_master_bus(&bus_cfg, &s_i2c_bus_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "i2c bus init failed: %s", esp_err_to_name(err));
-        return err;
+        err = i2c_new_master_bus(&bus_cfg, &s_i2c_bus_handle);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "i2c bus init failed: %s", esp_err_to_name(err));
+            return err;
+        }
     }
 
     if (BSP_SPI_CS_GPIO != GPIO_NUM_NC) {
@@ -165,6 +172,13 @@ esp_err_t bsp_board_init(void) {
         gpio_set_level(BSP_LCD_BL_GPIO, 0);
     }
 
+    err = bsp_board_i2c_scan();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "I2C scan failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    s_board_initialized = true;
     return ESP_OK;
 }
 
@@ -195,9 +209,9 @@ esp_err_t bsp_board_i2c_scan(void) {
     return ESP_OK;
 }
 
-void bsp_board_print_peripheral(void) {
+void bsp_board_print_status(void) {
     const bsp_board_config_t &config = *bsp_board_get_config();
-    app::SerialBoxPrinter printer("BOARD PERIPHERALS");
+    app::SerialBoxPrinter printer("BOARD STATUS");
 
     const std::string spi_host_name = (config.spi_host == SPI2_HOST) ? "SPI2" : "SPI1";
     const std::string touch_int_state = (config.touch_int_gpio == GPIO_NUM_NC) ? "—" : "INPUT";

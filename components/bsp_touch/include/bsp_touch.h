@@ -16,6 +16,7 @@ typedef struct {
 } bsp_touch_point_t;
 
 esp_err_t bsp_touch_init(uint16_t width, uint16_t height);
+void bsp_touch_print_status(void);
 esp_err_t bsp_touch_deinit(void);
 esp_err_t bsp_touch_read(bsp_touch_point_t *point);
 esp_err_t bsp_touch_reset(void);

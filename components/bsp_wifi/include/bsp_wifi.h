@@ -17,5 +17,6 @@ typedef struct {
 
 typedef void (*bsp_wifi_connected_callback_t)(const bsp_wifi_status_t *status, void *context);
 
-esp_err_t bsp_wifi_start(const char *ssid, const char *password,
-                         bsp_wifi_connected_callback_t connected_callback, void *context);
+esp_err_t bsp_wifi_init(const char *ssid, const char *password,
+                        bsp_wifi_connected_callback_t connected_callback, void *context);
+void bsp_wifi_print_status(void);

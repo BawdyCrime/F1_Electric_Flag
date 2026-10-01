@@ -4,12 +4,14 @@
 #include "driver/i2c_master.h"
 #include "esp_io_expander.h"
 #include "esp_io_expander_tca9554.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "serial_box_printer.h"
 
 #include <string>
 
+static const char *TAG = "bsp_expander";
 static esp_io_expander_handle_t s_expander = nullptr;
 
 static bool valid_pin_mask(uint32_t pin_mask) {
@@ -32,9 +34,8 @@ esp_err_t bsp_expander_set_direction(uint32_t pin_mask, bool output) {
     if (!valid_pin_mask(pin_mask)) {
         return ESP_ERR_INVALID_ARG;
     }
-    esp_err_t err = bsp_expander_init();
-    if (err != ESP_OK) {
-        return err;
+    if (s_expander == nullptr) {
+        return ESP_ERR_INVALID_STATE;
     }
     return esp_io_expander_set_dir(s_expander, pin_mask,
                                    output ? IO_EXPANDER_OUTPUT : IO_EXPANDER_INPUT);
@@ -44,9 +45,8 @@ esp_err_t bsp_expander_write(uint32_t pin_mask, bool high) {
     if (!valid_pin_mask(pin_mask)) {
         return ESP_ERR_INVALID_ARG;
     }
-    esp_err_t err = bsp_expander_init();
-    if (err != ESP_OK) {
-        return err;
+    if (s_expander == nullptr) {
+        return ESP_ERR_INVALID_STATE;
     }
     return esp_io_expander_set_level(s_expander, pin_mask, high ? 1 : 0);
 }
@@ -55,14 +55,16 @@ esp_err_t bsp_expander_read(uint32_t pin_mask, uint32_t *level_mask) {
     if (!valid_pin_mask(pin_mask) || level_mask == nullptr) {
         return ESP_ERR_INVALID_ARG;
     }
-    esp_err_t err = bsp_expander_init();
-    if (err != ESP_OK) {
-        return err;
+    if (s_expander == nullptr) {
+        return ESP_ERR_INVALID_STATE;
     }
     return esp_io_expander_get_level(s_expander, pin_mask, level_mask);
 }
 
 esp_err_t bsp_expander_pulse_lcd_reset(void) {
+    if (s_expander == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
     esp_err_t err = bsp_expander_set_direction(BSP_EXPANDER_LCD_RESET, true);
     if (err == ESP_OK) {
         err = bsp_expander_write(BSP_EXPANDER_LCD_RESET, false);
@@ -74,21 +76,20 @@ esp_err_t bsp_expander_pulse_lcd_reset(void) {
     err = bsp_expander_write(BSP_EXPANDER_LCD_RESET, true);
     if (err == ESP_OK) {
         vTaskDelay(pdMS_TO_TICKS(200));
-        err = bsp_expander_print_state();
     }
     return err;
 }
 
-esp_err_t bsp_expander_print_state(void) {
-    esp_err_t err = bsp_expander_init();
-    if (err != ESP_OK) {
-        return err;
+void bsp_expander_print_status(void) {
+    if (s_expander == nullptr) {
+        ESP_LOGE(TAG, "Cannot print expander status before initialization");
+        return;
     }
 
     uint32_t input_levels = 0;
     uint32_t output_latch = 0;
     uint32_t direction = 0;
-    err = s_expander->read_input_reg(s_expander, &input_levels);
+    esp_err_t err = s_expander->read_input_reg(s_expander, &input_levels);
     if (err == ESP_OK) {
         err = s_expander->read_output_reg(s_expander, &output_latch);
     }
@@ -96,7 +97,8 @@ esp_err_t bsp_expander_print_state(void) {
         err = s_expander->read_direction_reg(s_expander, &direction);
     }
     if (err != ESP_OK) {
-        return err;
+        ESP_LOGE(TAG, "Failed to read expander status: %s", esp_err_to_name(err));
+        return;
     }
 
     app::SerialBoxPrinter printer("TCA9554 EXPANDER");
@@ -115,7 +117,6 @@ esp_err_t bsp_expander_print_state(void) {
         printer.add_body_line(row);
     }
     printer.print();
-    return ESP_OK;
 }
 
 esp_err_t bsp_expander_deinit(void) {

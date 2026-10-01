@@ -6,6 +6,7 @@
 #include "esp_netif_ip_addr.h"
 #include "esp_wifi.h"
 #include "nvs_flash.h"
+#include "serial_box_printer.h"
 
 #include <cstdio>
 #include <cstring>
@@ -14,6 +15,8 @@ static const char *TAG = "bsp_wifi";
 static bsp_wifi_connected_callback_t s_connected_callback = nullptr;
 static void *s_callback_context = nullptr;
 static esp_netif_t *s_station_netif = nullptr;
+static bool s_wifi_initialized = false;
+static char s_configured_ssid[33] = {};
 
 static void format_mac(const uint8_t mac[6], char output[18])
 {
@@ -99,9 +102,12 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base,
     }
 }
 
-esp_err_t bsp_wifi_start(const char *ssid, const char *password,
-                         bsp_wifi_connected_callback_t connected_callback, void *context)
+esp_err_t bsp_wifi_init(const char *ssid, const char *password,
+                        bsp_wifi_connected_callback_t connected_callback, void *context)
 {
+    if (s_wifi_initialized) {
+        return ESP_OK;
+    }
     if (ssid == nullptr || password == nullptr) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -169,5 +175,25 @@ esp_err_t bsp_wifi_start(const char *ssid, const char *password,
         return err;
     }
 
-    return esp_wifi_start();
+    err = esp_wifi_start();
+    if (err == ESP_OK) {
+        std::memcpy(s_configured_ssid, ssid, ssid_length);
+        s_configured_ssid[ssid_length] = '\0';
+        s_wifi_initialized = true;
+    }
+    return err;
+}
+
+void bsp_wifi_print_status(void)
+{
+    if (!s_wifi_initialized) {
+        ESP_LOGE(TAG, "Cannot print Wi-Fi status before initialization");
+        return;
+    }
+
+    app::SerialBoxPrinter printer("WI-FI STATUS");
+    printer.add_body_bullet("Station: initialized", 2U);
+    printer.add_body_bullet("SSID: " + std::string(s_configured_ssid), 2U);
+    printer.add_body_bullet("Connection: waiting for IP event", 2U);
+    printer.print();
 }

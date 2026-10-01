@@ -26,7 +26,7 @@ esp_err_t bsp_expander_set_direction(uint32_t pin_mask, bool output);
 esp_err_t bsp_expander_write(uint32_t pin_mask, bool high);
 esp_err_t bsp_expander_read(uint32_t pin_mask, uint32_t *level_mask);
 esp_err_t bsp_expander_pulse_lcd_reset(void);
-esp_err_t bsp_expander_print_state(void);
+void bsp_expander_print_status(void);
 esp_err_t bsp_expander_deinit(void);
 
 #ifdef __cplusplus

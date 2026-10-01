@@ -9,7 +9,6 @@
 #include "esp_lvgl_port.h"
 
 #include "bsp_board.h"
-#include "bsp_expander.h"
 #include "serial_box_printer.h"
 
 #include "esp_heap_caps.h"
@@ -22,6 +21,7 @@ static esp_lcd_panel_io_handle_t s_panel_io = nullptr;
 static esp_lcd_panel_handle_t s_panel = nullptr;
 static lv_display_t *s_lvgl_display = nullptr;
 static bool s_spi_bus_initialized = false;
+static size_t s_init_command_count = 0;
 
 extern "C" const axs15231b_lcd_init_cmd_t *bsp_display_get_init_commands(size_t *count);
 
@@ -59,13 +59,7 @@ esp_err_t bsp_display_init(void) {
     bus_cfg.data3_io_num = BSP_SPI_QSPI_IO3_GPIO;
     bus_cfg.max_transfer_sz = 4 * 1024;
 
-    esp_err_t err = bsp_expander_pulse_lcd_reset();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "LCD reset through TCA9554 failed: %s", esp_err_to_name(err));
-        return err;
-    }
-
-    err = spi_bus_initialize(BSP_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
+    esp_err_t err = spi_bus_initialize(BSP_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "LCD SPI bus init failed: %s", esp_err_to_name(err));
         return err;
@@ -91,9 +85,8 @@ esp_err_t bsp_display_init(void) {
 
     axs15231b_vendor_config_t vendor_config = {};
     vendor_config.flags.use_qspi_interface = 1;
-    size_t init_command_count = 0;
-    vendor_config.init_cmds = bsp_display_get_init_commands(&init_command_count);
-    vendor_config.init_cmds_size = init_command_count;
+    vendor_config.init_cmds = bsp_display_get_init_commands(&s_init_command_count);
+    vendor_config.init_cmds_size = s_init_command_count;
 
     esp_lcd_panel_dev_config_t panel_config = {};
     panel_config.reset_gpio_num = GPIO_NUM_NC;
@@ -176,6 +169,14 @@ esp_err_t bsp_display_init(void) {
         return ESP_ERR_NO_MEM;
     }
 
+    return ESP_OK;
+}
+
+void bsp_display_print_status(void) {
+    if (s_panel == nullptr || s_lvgl_display == nullptr) {
+        return;
+    }
+
     char display_info[128];
     char display_bus_info[128];
     char display_protocol_info[128];
@@ -187,7 +188,7 @@ esp_err_t bsp_display_init(void) {
                   static_cast<unsigned>(BSP_SPI_CLOCK_HZ / 1000000U));
     std::snprintf(display_protocol_info, sizeof(display_protocol_info),
                   "16-bit RGB565, %u-bit commands, %u-bit parameters, %u init commands",
-                  32U, 8U, static_cast<unsigned>(init_command_count));
+                  32U, 8U, static_cast<unsigned>(s_init_command_count));
     std::snprintf(lvgl_info, sizeof(lvgl_info), "LVGL full refresh, single DMA/PSRAM buffer (%u pixels)",
                   static_cast<unsigned>(BSP_DISPLAY_PANEL_WIDTH * BSP_DISPLAY_PANEL_HEIGHT));
     app::SerialBoxPrinter printer("DISPLAY STATUS");
@@ -200,7 +201,6 @@ esp_err_t bsp_display_init(void) {
     printer.add_body_bullet("Pins: " + std::string(display_info), 2U);
     printer.add_body_bullet("LVGL: " + std::string(lvgl_info), 2U);
     printer.print();
-    return ESP_OK;
 }
 
 esp_err_t bsp_display_deinit(void) {

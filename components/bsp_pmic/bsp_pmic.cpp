@@ -114,10 +114,7 @@ esp_err_t bsp_pmic_init(void) {
     }
 
     if (bsp_board_get_i2c_bus_handle() == NULL) {
-        esp_err_t err = bsp_board_init();
-        if (err != ESP_OK) {
-            return err;
-        }
+        return ESP_ERR_INVALID_STATE;
     }
 
     i2c_device_config_t dev_cfg = {
