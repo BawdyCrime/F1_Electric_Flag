@@ -406,17 +406,18 @@ void render_sessions_locked()
 
         lv_obj_t *name = lv_label_create(row);
         lv_label_set_text(name, session.name.c_str());
+        lv_obj_set_width(name, BSP_DISPLAY_PANEL_WIDTH / 2 - 30);
+        lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
         lv_obj_align(name, LV_ALIGN_LEFT_MID, 12, 0);
         style_label(name, color, &lv_font_montserrat_14);
 
         std::string secondary = session.cancelled
                                     ? "CANCELLED"
                                     : format_local_date(session.date_start) + " LOCAL";
-        if (selected && !disabled) {
-            secondary = "SELECTED  |  " + format_local_date(session.date_start) + " LOCAL";
-        }
         lv_obj_t *details = lv_label_create(row);
         lv_label_set_text(details, secondary.c_str());
+        lv_obj_set_width(details, BSP_DISPLAY_PANEL_WIDTH / 2 - 24);
+        lv_label_set_long_mode(details, LV_LABEL_LONG_DOT);
         lv_obj_align(details, LV_ALIGN_RIGHT_MID, -10, 0);
         style_label(details, disabled ? lv_color_hex(0x626262) : lv_color_hex(0xA0A0A0),
                     &lv_font_montserrat_14);
