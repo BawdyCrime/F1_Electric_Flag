@@ -20,17 +20,22 @@ extern const uint8_t _binary_team_logo_cad_rgb565_start[];
 }
 
 namespace {
-
+// Layout constants for the flag interval panel
 constexpr int32_t PANEL_HEIGHT = BSP_DISPLAY_PANEL_WIDTH; // same square area used by the flag screens
 constexpr int32_t ROW_HEIGHT = 36;
+
+// Column flex values for the flag interval panel
 constexpr int32_t POSITION_COL_FLEX = 2;
-constexpr int32_t TEAM_COL_FLEX = 6;
+constexpr int32_t TEAM_COL_FLEX = 4;
 constexpr int32_t DRIVER_COL_FLEX = 6;
 constexpr int32_t INTERVAL_COL_FLEX = 8;
 constexpr int32_t TYRE_COL_FLEX = 2;
-constexpr int32_t TEAM_LOGO_WIDTH = 56;
+constexpr int32_t TEAM_LOGO_WIDTH = 36;
 constexpr int32_t TEAM_LOGO_HEIGHT = 28;
+
+// Width of the driver bar within the flag interval panel
 constexpr int32_t DRIVER_BAR_WIDTH = 4;
+constexpr int32_t DRIVER_BAR_HEIGHT = 20;
 
 constexpr lv_image_dsc_t make_team_logo(const uint8_t *data) {
     return {
@@ -153,7 +158,7 @@ lv_obj_t *create_column(lv_obj_t *row, int32_t flex_grow) {
 lv_obj_t *create_label(lv_obj_t *parent, lv_color_t color) {
     lv_obj_t *label = lv_label_create(parent);
     lv_obj_set_style_text_color(label, color, 0);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(label);
     return label;
@@ -183,7 +188,7 @@ void create_row(lv_obj_t *panel, const flag_interval_row_t &row) {
 
     lv_obj_t *driver_col = create_column(row_obj, DRIVER_COL_FLEX);
     lv_obj_t *driver_bar = lv_obj_create(driver_col);
-    lv_obj_set_size(driver_bar, DRIVER_BAR_WIDTH, lv_pct(50));
+    lv_obj_set_size(driver_bar, DRIVER_BAR_WIDTH, DRIVER_BAR_HEIGHT);
     lv_obj_set_style_bg_color(driver_bar, team_color(row.team), 0);
     lv_obj_set_style_bg_opa(driver_bar, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(driver_bar, 0, 0);
