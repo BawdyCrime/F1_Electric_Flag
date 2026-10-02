@@ -7,5 +7,5 @@ struct flag_view_t {
     lv_obj_t *square = nullptr;
     lv_obj_t *lap_header = nullptr;
     lv_obj_t *time_header = nullptr;
-    lv_obj_t *interval_panel = nullptr;
+    lv_obj_t *event_timing_panel = nullptr;
 };

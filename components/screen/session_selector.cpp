@@ -1,7 +1,7 @@
-#include "race_selector.h"
+#include "session_selector.h"
 
 #include "bsp_display.h"
-#include "display_logo.h"
+#include "screen_header.h"
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_lvgl_port.h"
@@ -29,7 +29,7 @@ constexpr int32_t SESSION_LIST_BOTTOM_MARGIN = 52;
 constexpr int32_t BACK_TOUCH_TARGET_WIDTH = 120;
 constexpr int32_t BACK_TOUCH_TARGET_HEIGHT = 48;
 constexpr char OPENF1_BASE_URL[] = "https://api.openf1.org/v1";
-static const char *TAG = "race_selector";
+static const char *TAG = "session_selector";
 
 struct meeting_t {
     uint32_t key;
@@ -570,7 +570,7 @@ void handle_click_locked(int x, int y, int *meeting_to_load)
 
 }  // namespace
 
-esp_err_t race_selector_init(void)
+esp_err_t session_selector_init(void)
 {
     if (s_state.initialized) {
         return ESP_OK;
@@ -586,7 +586,7 @@ esp_err_t race_selector_init(void)
     lv_obj_set_style_border_width(s_state.screen, 0, 0);
     lv_obj_set_style_pad_all(s_state.screen, 0, 0);
 
-    display_logo_create(s_state.screen);
+    screen_header_create(s_state.screen);
 
     s_state.title = lv_label_create(s_state.screen);
     lv_label_set_text_fmt(s_state.title, "%d RACE CALENDAR", s_state.year);
@@ -647,7 +647,7 @@ esp_err_t race_selector_init(void)
     return ESP_OK;
 }
 
-void race_selector_handle_touch(bool pressed, int x, int y)
+void session_selector_handle_touch(bool pressed, int x, int y)
 {
     if (!s_state.initialized || !lvgl_port_lock(100)) {
         return;
@@ -692,7 +692,7 @@ void race_selector_handle_touch(bool pressed, int x, int y)
     }
 }
 
-bool race_selector_get_selected_session(uint32_t *meeting_key, uint32_t *session_key)
+bool session_selector_get_selected_session(uint32_t *meeting_key, uint32_t *session_key)
 {
     if (meeting_key == nullptr || session_key == nullptr || !s_state.initialized ||
         !lvgl_port_lock(1000)) {

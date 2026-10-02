@@ -7,11 +7,11 @@
 #include "bsp_rtc.h"
 #include "bsp_touch.h"
 #include "bsp_wifi.h"
-#include "race_selector.h"
+#include "session_selector.h"
 #include "esp_netif_ip_addr.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "serial_box_printer.h"
+#include "serial_box.h"
 
 #if __has_include("wifi_credentials.local.h")
 #include "wifi_credentials.local.h"
@@ -49,7 +49,7 @@ static void wifi_connected_callback(const bsp_wifi_status_t *status, void *conte
     }
 }
 
-static void race_selector_touch_task(void *arg)
+static void session_selector_touch_task(void *arg)
 {
     (void)arg;
 
@@ -61,7 +61,7 @@ static void race_selector_touch_task(void *arg)
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
-        race_selector_handle_touch(point.pressed, point.x, point.y);
+        session_selector_handle_touch(point.pressed, point.x, point.y);
         vTaskDelay(pdMS_TO_TICKS(30));
     }
 }
@@ -148,13 +148,13 @@ extern "C" void app_main(void)
         return;
     }
 
-    err = race_selector_init();
+    err = session_selector_init();
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Race selector init failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Session selector init failed: %s", esp_err_to_name(err));
         return;
     }
 
-    BaseType_t task_result = xTaskCreate(race_selector_touch_task, "race_touch", 4096, nullptr, 3, nullptr);
+    BaseType_t task_result = xTaskCreate(session_selector_touch_task, "session_touch", 4096, nullptr, 3, nullptr);
     if (task_result != pdPASS) {
         ESP_LOGE(TAG, "Failed to create race selector touch task");
         return;

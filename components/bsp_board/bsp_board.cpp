@@ -9,7 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "serial_box_printer.h"
+#include "serial_box.h"
 
 static const char *TAG = "bsp_board";
 static i2c_master_bus_handle_t s_i2c_bus_handle = NULL;

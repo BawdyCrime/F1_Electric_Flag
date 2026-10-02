@@ -6,7 +6,7 @@
 #include "esp_netif_ip_addr.h"
 #include "esp_wifi.h"
 #include "nvs_flash.h"
-#include "serial_box_printer.h"
+#include "serial_box.h"
 
 #include <cstdio>
 #include <cstring>

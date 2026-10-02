@@ -9,7 +9,7 @@
 #include "esp_lvgl_port.h"
 
 #include "bsp_board.h"
-#include "serial_box_printer.h"
+#include "serial_box.h"
 
 #include "esp_heap_caps.h"
 

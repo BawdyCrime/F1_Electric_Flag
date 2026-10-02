@@ -1,6 +1,6 @@
 #include "bsp_imu.h"
 
-#include "serial_box_printer.h"
+#include "serial_box.h"
 
 esp_err_t bsp_imu_init(void) {
     app::SerialBoxPrinter printer("IMU STATUS");

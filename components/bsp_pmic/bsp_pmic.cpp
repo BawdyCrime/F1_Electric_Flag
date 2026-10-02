@@ -7,7 +7,7 @@
 
 #include "driver/i2c_master.h"
 #include "bsp_board.h"
-#include "serial_box_printer.h"
+#include "serial_box.h"
 
 static const char *TAG = "bsp_pmic";
 

@@ -5,7 +5,7 @@
 #include "esp_lcd_io_i2c.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_touch.h"
-#include "serial_box_printer.h"
+#include "serial_box.h"
 
 #include <cstdio>
 #include <string>

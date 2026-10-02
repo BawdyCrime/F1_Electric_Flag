@@ -10,7 +10,7 @@
 #include "esp_psram.h"
 #include "esp_system.h"
 
-#include "serial_box_printer.h"
+#include "serial_box.h"
 
 namespace {
 

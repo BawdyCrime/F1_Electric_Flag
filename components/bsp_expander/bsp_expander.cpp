@@ -7,7 +7,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "serial_box_printer.h"
+#include "serial_box.h"
 
 #include <string>
 

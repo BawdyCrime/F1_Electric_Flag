@@ -1,7 +1,7 @@
 #include "flag_header.h"
 
 #include "bsp_display.h"
-#include "display_logo.h"
+#include "screen_header.h"
 
 static constexpr int32_t HEADER_HEIGHT = BSP_DISPLAY_PANEL_HEIGHT - BSP_DISPLAY_PANEL_WIDTH;
 static constexpr int32_t LOGO_ROW_HEIGHT = 70;
@@ -42,7 +42,7 @@ void flag_header_create(flag_view_t *view, uint32_t current_lap, uint32_t total_
     lv_obj_set_scrollbar_mode(header, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_scrollable(header, false);
 
-    display_logo_create(header);
+    screen_header_create(header);
 
     view->lap_header = lv_label_create(header);
     lv_obj_set_width(view->lap_header, BSP_DISPLAY_PANEL_WIDTH);

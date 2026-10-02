@@ -1,4 +1,4 @@
-#include "display_logo.h"
+#include "screen_header.h"
 
 extern "C" const uint8_t _binary_f1_logo_192x48_rgb565_start[];
 
@@ -18,7 +18,7 @@ static const lv_image_dsc_t F1_LOGO_IMAGE = {
     .reserved_2 = nullptr,
 };
 
-void display_logo_create(lv_obj_t *parent)
+void screen_header_create(lv_obj_t *parent)
 {
     lv_obj_t *logo = lv_image_create(parent);
     lv_image_set_src(logo, &F1_LOGO_IMAGE);

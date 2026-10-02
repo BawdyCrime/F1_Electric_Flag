@@ -1,4 +1,4 @@
-#include "flag_interval.h"
+#include "event_timing.h"
 
 #include "bsp_display.h"
 #include "lvgl.h"
@@ -20,11 +20,11 @@ extern const uint8_t _binary_team_logo_cad_rgb565_start[];
 }
 
 namespace {
-// Layout constants for the flag interval panel
+// Layout constants for the event timing panel
 constexpr int32_t PANEL_HEIGHT = BSP_DISPLAY_PANEL_WIDTH; // same square area used by the flag screens
 constexpr int32_t ROW_HEIGHT = 36;
 
-// Column flex values for the flag interval panel
+// Column flex values for the event timing panel
 constexpr int32_t POSITION_COL_FLEX = 2;
 constexpr int32_t TEAM_COL_FLEX = 4;
 constexpr int32_t DRIVER_COL_FLEX = 6;
@@ -33,7 +33,7 @@ constexpr int32_t TYRE_COL_FLEX = 2;
 constexpr int32_t TEAM_LOGO_WIDTH = 36;
 constexpr int32_t TEAM_LOGO_HEIGHT = 28;
 
-// Width of the driver bar within the flag interval panel
+// Width of the driver bar within the event timing panel
 constexpr int32_t DRIVER_BAR_WIDTH = 4;
 constexpr int32_t DRIVER_BAR_HEIGHT = 20;
 
@@ -164,7 +164,7 @@ lv_obj_t *create_label(lv_obj_t *parent, lv_color_t color) {
     return label;
 }
 
-void create_row(lv_obj_t *panel, const flag_interval_row_t &row) {
+void create_row(lv_obj_t *panel, const event_timing_row_t &row) {
     lv_obj_t *row_obj = lv_obj_create(panel);
     lv_obj_set_size(row_obj, lv_pct(100), ROW_HEIGHT);
     lv_obj_set_flex_flow(row_obj, LV_FLEX_FLOW_ROW);
@@ -211,29 +211,29 @@ void create_row(lv_obj_t *panel, const flag_interval_row_t &row) {
 
 } // namespace
 
-const size_t FLAG_INTERVAL_MAX_ROWS = PANEL_HEIGHT / ROW_HEIGHT;
+const size_t EVENT_TIMING_MAX_ROWS = PANEL_HEIGHT / ROW_HEIGHT;
 
-void flag_interval_create(flag_view_t *view) {
-    view->interval_panel = lv_obj_create(view->screen);
-    lv_obj_set_size(view->interval_panel, BSP_DISPLAY_PANEL_WIDTH, PANEL_HEIGHT);
-    lv_obj_align(view->interval_panel, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_flex_flow(view->interval_panel, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_bg_color(view->interval_panel, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(view->interval_panel, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(view->interval_panel, 0, 0);
-    lv_obj_set_style_pad_all(view->interval_panel, 4, 0);
-    lv_obj_set_style_pad_gap(view->interval_panel, 2, 0);
-    lv_obj_set_scrollbar_mode(view->interval_panel, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_scrollable(view->interval_panel, false);
+void event_timing_create(flag_view_t *view) {
+    view->event_timing_panel = lv_obj_create(view->screen);
+    lv_obj_set_size(view->event_timing_panel, BSP_DISPLAY_PANEL_WIDTH, PANEL_HEIGHT);
+    lv_obj_align(view->event_timing_panel, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_flex_flow(view->event_timing_panel, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_bg_color(view->event_timing_panel, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(view->event_timing_panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(view->event_timing_panel, 0, 0);
+    lv_obj_set_style_pad_all(view->event_timing_panel, 4, 0);
+    lv_obj_set_style_pad_gap(view->event_timing_panel, 2, 0);
+    lv_obj_set_scrollbar_mode(view->event_timing_panel, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scrollable(view->event_timing_panel, false);
 }
 
-void flag_interval_update(flag_view_t *view, const flag_interval_row_t *rows, size_t row_count) {
-    if (view->interval_panel == nullptr) {
+void event_timing_update(flag_view_t *view, const event_timing_row_t *rows, size_t row_count) {
+    if (view->event_timing_panel == nullptr) {
         return;
     }
-    lv_obj_clean(view->interval_panel);
-    const size_t visible_rows = std::min(row_count, FLAG_INTERVAL_MAX_ROWS);
+    lv_obj_clean(view->event_timing_panel);
+    const size_t visible_rows = std::min(row_count, EVENT_TIMING_MAX_ROWS);
     for (size_t i = 0; i < visible_rows; ++i) {
-        create_row(view->interval_panel, rows[i]);
+        create_row(view->event_timing_panel, rows[i]);
     }
 }

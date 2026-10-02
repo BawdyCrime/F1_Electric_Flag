@@ -4,7 +4,7 @@
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
-#include "serial_box_printer.h"
+#include "serial_box.h"
 
 #include <cstdlib>
 #include <ctime>
