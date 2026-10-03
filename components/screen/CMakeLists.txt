@@ -8,7 +8,7 @@ idf_component_register(
         "flag_display/matrix_patterns.cpp"
         "event_timing/event_timing.cpp"
     INCLUDE_DIRS "include" "event_timing" "flag_display" "screen_header"
-    REQUIRES bsp_display esp_http_client esp-tls espressif__esp_lvgl_port cjson lvgl serial_box
+    REQUIRES bsp_display f1_types espressif__esp_lvgl_port lvgl serial_box
     EMBED_FILES
         "bitmap/f1_logo/f1_logo_192x48.rgb565"
         "bitmap/team_logo/team_logo_rbr.rgb565"

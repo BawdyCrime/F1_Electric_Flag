@@ -26,7 +26,7 @@ static size_t s_init_command_count = 0;
 extern "C" const axs15231b_lcd_init_cmd_t *bsp_display_get_init_commands(size_t *count);
 
 static esp_err_t display_direct_color_test(void) {
-    constexpr uint32_t rows_per_chunk = BSP_DISPLAY_PANEL_HEIGHT/4;
+    constexpr uint32_t rows_per_chunk = BSP_DISPLAY_PANEL_HEIGHT/8;
     constexpr uint16_t test_color = 0x07E0;
     const size_t pixel_count = BSP_DISPLAY_PANEL_WIDTH * rows_per_chunk;
     auto *pixels = static_cast<uint16_t *>(heap_caps_malloc(pixel_count * sizeof(uint16_t),

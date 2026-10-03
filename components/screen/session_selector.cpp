@@ -2,21 +2,16 @@
 
 #include "bsp_display.h"
 #include "screen_header.h"
-#include "esp_crt_bundle.h"
-#include "esp_http_client.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lvgl.h"
 
-#include "cJSON.h"
-
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
-#include <new>
 #include <string>
 #include <vector>
 
@@ -28,28 +23,10 @@ constexpr int32_t SESSION_LIST_TOP = 136;
 constexpr int32_t SESSION_LIST_BOTTOM_MARGIN = 52;
 constexpr int32_t BACK_TOUCH_TARGET_WIDTH = 120;
 constexpr int32_t BACK_TOUCH_TARGET_HEIGHT = 48;
-constexpr char OPENF1_BASE_URL[] = "https://api.openf1.org/v1";
 static const char *TAG = "session_selector";
 
-struct meeting_t {
-    uint32_t key;
-    std::string name;
-    std::string location;
-    std::string date_start;
-    std::string date_end;
-    bool cancelled;
-    time_t start_epoch;
-    time_t end_epoch;
-};
-
-struct session_t {
-    uint32_t key;
-    uint32_t meeting_key;
-    std::string name;
-    std::string date_start;
-    bool cancelled;
-    time_t start_epoch;
-};
+using meeting_t = f1::Meeting;
+using session_t = f1::Session;
 
 enum class page_t : uint8_t {
     races,
@@ -69,6 +46,7 @@ struct selector_state_t {
     int selected_meeting = -1;
     int selected_session = -1;
     int year = 0;
+    session_selector_callbacks_t callbacks = {};
     bool initialized = false;
     bool pointer_down = false;
     bool pointer_dragged = false;
@@ -79,171 +57,6 @@ struct selector_state_t {
 };
 
 static selector_state_t s_state;
-
-int get_current_year()
-{
-    time_t now = time(nullptr);
-    if (now > 1700000000) {
-        struct tm calendar = {};
-        gmtime_r(&now, &calendar);
-        return calendar.tm_year + 1900;
-    }
-
-    char build_year[5] = {};
-    std::snprintf(build_year, sizeof(build_year), "%.4s", __DATE__ + 7);
-    return std::atoi(build_year);
-}
-
-time_t parse_utc_time(const std::string &value)
-{
-    int year = 0;
-    int month = 0;
-    int day = 0;
-    int hour = 0;
-    int minute = 0;
-    int second = 0;
-    if (std::sscanf(value.c_str(), "%4d-%2d-%2dT%2d:%2d:%2d",
-                    &year, &month, &day, &hour, &minute, &second) != 6) {
-        return 0;
-    }
-
-    struct tm calendar = {};
-    calendar.tm_year = year - 1900;
-    calendar.tm_mon = month - 1;
-    calendar.tm_mday = day;
-    calendar.tm_hour = hour;
-    calendar.tm_min = minute;
-    calendar.tm_sec = second;
-    return timegm(&calendar);
-}
-
-std::string json_string(const cJSON *object, const char *name)
-{
-    const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, name);
-    return cJSON_IsString(item) && item->valuestring != nullptr ? item->valuestring : "";
-}
-
-uint32_t json_uint(const cJSON *object, const char *name)
-{
-    const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, name);
-    return cJSON_IsNumber(item) && item->valuedouble > 0
-               ? static_cast<uint32_t>(item->valuedouble)
-               : 0U;
-}
-
-bool json_bool(const cJSON *object, const char *name)
-{
-    const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, name);
-    return cJSON_IsTrue(item);
-}
-
-esp_err_t http_event_handler(esp_http_client_event_t *event)
-{
-    if (event->event_id == HTTP_EVENT_ON_DATA && event->data != nullptr && event->user_data != nullptr) {
-        auto *response = static_cast<std::string *>(event->user_data);
-        response->append(static_cast<const char *>(event->data), event->data_len);
-    }
-    return ESP_OK;
-}
-
-esp_err_t get_json(const std::string &url, std::string *response)
-{
-    if (response == nullptr) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    esp_http_client_config_t config = {};
-    config.url = url.c_str();
-    config.timeout_ms = 12000;
-    config.buffer_size = 4096;
-    config.event_handler = http_event_handler;
-    config.user_data = response;
-    config.crt_bundle_attach = esp_crt_bundle_attach;
-
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    if (client == nullptr) {
-        return ESP_ERR_NO_MEM;
-    }
-    esp_http_client_set_header(client, "Accept", "application/json");
-    esp_err_t err = esp_http_client_perform(client);
-    const int status = esp_http_client_get_status_code(client);
-    esp_http_client_cleanup(client);
-
-    if (err != ESP_OK) {
-        return err;
-    }
-    return status >= 200 && status < 300 ? ESP_OK : ESP_FAIL;
-}
-
-bool is_grand_prix(const std::string &name)
-{
-    return name.find("Grand Prix") != std::string::npos;
-}
-
-esp_err_t parse_meetings(const std::string &response, std::vector<meeting_t> *meetings)
-{
-    cJSON *root = cJSON_Parse(response.c_str());
-    if (root == nullptr || !cJSON_IsArray(root)) {
-        cJSON_Delete(root);
-        return ESP_ERR_INVALID_RESPONSE;
-    }
-
-    std::vector<meeting_t> parsed;
-    const cJSON *item = nullptr;
-    cJSON_ArrayForEach(item, root) {
-        meeting_t meeting = {};
-        meeting.key = json_uint(item, "meeting_key");
-        meeting.name = json_string(item, "meeting_name");
-        meeting.location = json_string(item, "location");
-        meeting.date_start = json_string(item, "date_start");
-        meeting.date_end = json_string(item, "date_end");
-        meeting.cancelled = json_bool(item, "is_cancelled");
-        meeting.start_epoch = parse_utc_time(meeting.date_start);
-        meeting.end_epoch = parse_utc_time(meeting.date_end);
-        if (meeting.key != 0 && is_grand_prix(meeting.name)) {
-            parsed.push_back(std::move(meeting));
-        }
-    }
-    cJSON_Delete(root);
-
-    std::sort(parsed.begin(), parsed.end(), [](const meeting_t &left, const meeting_t &right) {
-        return left.start_epoch < right.start_epoch;
-    });
-    *meetings = std::move(parsed);
-    return meetings->empty() ? ESP_ERR_NOT_FOUND : ESP_OK;
-}
-
-esp_err_t parse_sessions(const std::string &response, uint32_t meeting_key,
-                         std::vector<session_t> *sessions)
-{
-    cJSON *root = cJSON_Parse(response.c_str());
-    if (root == nullptr || !cJSON_IsArray(root)) {
-        cJSON_Delete(root);
-        return ESP_ERR_INVALID_RESPONSE;
-    }
-
-    std::vector<session_t> parsed;
-    const cJSON *item = nullptr;
-    cJSON_ArrayForEach(item, root) {
-        session_t session = {};
-        session.key = json_uint(item, "session_key");
-        session.meeting_key = json_uint(item, "meeting_key");
-        session.name = json_string(item, "session_name");
-        session.date_start = json_string(item, "date_start");
-        session.cancelled = json_bool(item, "is_cancelled");
-        session.start_epoch = parse_utc_time(session.date_start);
-        if (session.key != 0 && session.meeting_key == meeting_key) {
-            parsed.push_back(std::move(session));
-        }
-    }
-    cJSON_Delete(root);
-
-    std::sort(parsed.begin(), parsed.end(), [](const session_t &left, const session_t &right) {
-        return left.start_epoch < right.start_epoch;
-    });
-    *sessions = std::move(parsed);
-    return sessions->empty() ? ESP_ERR_NOT_FOUND : ESP_OK;
-}
 
 void style_label(lv_obj_t *label, lv_color_t color, const lv_font_t *font)
 {
@@ -285,9 +98,8 @@ int find_center_meeting_index()
     return next_index;
 }
 
-std::string format_local_date(const std::string &date)
+std::string format_local_date(time_t utc)
 {
-    const time_t utc = parse_utc_time(date);
     if (utc == 0) {
         return "DATE UNAVAILABLE";
     }
@@ -356,7 +168,7 @@ void render_races_locked()
         lv_obj_align(name, LV_ALIGN_TOP_LEFT, 12, 7);
         style_label(name, name_color, &lv_font_montserrat_14);
 
-        const std::string secondary = meeting.location + "  |  " + format_local_date(meeting.date_start);
+        const std::string secondary = meeting.location + "  |  " + format_local_date(meeting.start_epoch);
         lv_obj_t *details = lv_label_create(row);
         lv_label_set_text(details, meeting.cancelled ? "CANCELLED" : secondary.c_str());
         lv_obj_align(details, LV_ALIGN_BOTTOM_LEFT, 12, -7);
@@ -413,7 +225,7 @@ void render_sessions_locked()
 
         std::string secondary = session.cancelled
                                     ? "CANCELLED"
-                                    : format_local_date(session.date_start);
+                                    : format_local_date(session.start_epoch);
         lv_obj_t *details = lv_label_create(row);
         lv_label_set_text(details, secondary.c_str());
         lv_obj_set_width(details, BSP_DISPLAY_PANEL_WIDTH / 2 - 24);
@@ -439,85 +251,13 @@ void render_sessions_locked()
     }
 }
 
-void meetings_loader_task(void *argument)
-{
-    const int year = *static_cast<int *>(argument);
-    delete static_cast<int *>(argument);
+struct click_result_t {
+    bool back = false;
+    uint32_t meeting_key = 0;
+    uint32_t session_key = 0;
+};
 
-    std::vector<meeting_t> meetings;
-    esp_err_t err = ESP_FAIL;
-    char url[96] = {};
-    std::snprintf(url, sizeof(url), "%s/meetings?year=%d", OPENF1_BASE_URL, year);
-    for (int attempt = 0; attempt < 5 && err != ESP_OK; ++attempt) {
-        std::string response;
-        err = get_json(url, &response);
-        if (err == ESP_OK) {
-            err = parse_meetings(response, &meetings);
-        }
-        if (err != ESP_OK && attempt < 4) {
-            vTaskDelay(pdMS_TO_TICKS(4000));
-        }
-    }
-
-    if (lvgl_port_lock(1000)) {
-        if (err == ESP_OK) {
-            s_state.meetings = std::move(meetings);
-            render_races_locked();
-        } else {
-            ESP_LOGE(TAG, "Unable to load race calendar: %s", esp_err_to_name(err));
-            set_status_locked("SCHEDULE UNAVAILABLE");
-        }
-        lvgl_port_unlock();
-    }
-    vTaskDelete(nullptr);
-}
-
-void sessions_loader_task(void *argument)
-{
-    const uint32_t meeting_key = *static_cast<uint32_t *>(argument);
-    delete static_cast<uint32_t *>(argument);
-
-    char url[112] = {};
-    std::snprintf(url, sizeof(url), "%s/sessions?meeting_key=%u", OPENF1_BASE_URL,
-                  static_cast<unsigned>(meeting_key));
-    std::string response;
-    std::vector<session_t> sessions;
-    esp_err_t err = get_json(url, &response);
-    if (err == ESP_OK) {
-        err = parse_sessions(response, meeting_key, &sessions);
-    }
-
-    if (lvgl_port_lock(1000)) {
-        if (s_state.page == page_t::sessions && s_state.selected_meeting >= 0 &&
-            s_state.meetings[s_state.selected_meeting].key == meeting_key) {
-            if (err == ESP_OK) {
-                s_state.sessions = std::move(sessions);
-                render_sessions_locked();
-            } else {
-                ESP_LOGE(TAG, "Unable to load sessions: %s", esp_err_to_name(err));
-                s_state.sessions.clear();
-                set_status_locked("SESSIONS UNAVAILABLE");
-            }
-        }
-        lvgl_port_unlock();
-    }
-    vTaskDelete(nullptr);
-}
-
-void request_sessions(uint32_t meeting_key)
-{
-    auto *argument = new (std::nothrow) uint32_t(meeting_key);
-    if (argument == nullptr ||
-        xTaskCreate(sessions_loader_task, "sessions_loader", 8192, argument, 3, nullptr) != pdPASS) {
-        delete argument;
-        if (lvgl_port_lock(1000)) {
-            set_status_locked("SESSION REQUEST FAILED");
-            lvgl_port_unlock();
-        }
-    }
-}
-
-void handle_click_locked(int x, int y, int *meeting_to_load)
+void handle_click_locked(int x, int y, click_result_t *result)
 {
     const int back_left = (BSP_DISPLAY_PANEL_WIDTH - BACK_TOUCH_TARGET_WIDTH) / 2;
     if (s_state.page == page_t::sessions && x >= back_left &&
@@ -528,6 +268,7 @@ void handle_click_locked(int x, int y, int *meeting_to_load)
         s_state.selected_meeting = -1;
         s_state.selected_session = -1;
         render_races_locked();
+        result->back = true;
         return;
     }
 
@@ -553,7 +294,7 @@ void handle_click_locked(int x, int y, int *meeting_to_load)
         s_state.sessions.clear();
         render_sessions_locked();
         set_status_locked("LOADING EVENT SESSIONS");
-        *meeting_to_load = static_cast<int>(s_state.meetings[index].key);
+        result->meeting_key = s_state.meetings[index].key;
         return;
     }
 
@@ -566,11 +307,13 @@ void handle_click_locked(int x, int y, int *meeting_to_load)
     }
     s_state.selected_session = index;
     render_sessions_locked();
+    result->meeting_key = session.meeting_key;
+    result->session_key = session.key;
 }
 
 }  // namespace
 
-esp_err_t session_selector_init(void)
+esp_err_t session_selector_init(int year, const session_selector_callbacks_t &callbacks)
 {
     if (s_state.initialized) {
         return ESP_OK;
@@ -579,7 +322,8 @@ esp_err_t session_selector_init(void)
         return ESP_FAIL;
     }
 
-    s_state.year = get_current_year();
+    s_state.year = year;
+    s_state.callbacks = callbacks;
     s_state.screen = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(s_state.screen, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_state.screen, LV_OPA_COVER, 0);
@@ -634,16 +378,6 @@ esp_err_t session_selector_init(void)
     s_state.initialized = true;
     lvgl_port_unlock();
 
-    auto *year = new (std::nothrow) int(s_state.year);
-    if (year == nullptr ||
-        xTaskCreate(meetings_loader_task, "meetings_loader", 8192, year, 3, nullptr) != pdPASS) {
-        delete year;
-        if (lvgl_port_lock(1000)) {
-            set_status_locked("SCHEDULE REQUEST FAILED");
-            lvgl_port_unlock();
-        }
-        return ESP_ERR_NO_MEM;
-    }
     return ESP_OK;
 }
 
@@ -653,7 +387,7 @@ void session_selector_handle_touch(bool pressed, int x, int y)
         return;
     }
 
-    int meeting_to_load = -1;
+    click_result_t click;
     if (pressed) {
         if (!s_state.pointer_down) {
             s_state.pointer_down = true;
@@ -679,7 +413,7 @@ void session_selector_handle_touch(bool pressed, int x, int y)
         }
     } else if (s_state.pointer_down) {
         if (!s_state.pointer_dragged) {
-            handle_click_locked(s_state.pointer_start_x, s_state.pointer_start_y, &meeting_to_load);
+            handle_click_locked(s_state.pointer_start_x, s_state.pointer_start_y, &click);
         }
         s_state.pointer_down = false;
         s_state.pointer_dragged = false;
@@ -687,9 +421,51 @@ void session_selector_handle_touch(bool pressed, int x, int y)
     }
     lvgl_port_unlock();
 
-    if (meeting_to_load >= 0) {
-        request_sessions(static_cast<uint32_t>(meeting_to_load));
+    if (click.back) {
+        if (s_state.callbacks.on_back != nullptr) {
+            s_state.callbacks.on_back(s_state.callbacks.context);
+        }
+    } else if (click.session_key != 0) {
+        if (s_state.callbacks.on_session_selected != nullptr) {
+            s_state.callbacks.on_session_selected(click.meeting_key, click.session_key, s_state.callbacks.context);
+        }
+    } else if (click.meeting_key != 0 && s_state.callbacks.on_meeting_selected != nullptr) {
+        s_state.callbacks.on_meeting_selected(click.meeting_key, s_state.callbacks.context);
     }
+}
+
+void session_selector_show_meetings(const std::vector<f1::Meeting> &meetings)
+{
+    if (!s_state.initialized || !lvgl_port_lock(1000)) {
+        return;
+    }
+    s_state.meetings = meetings;
+    s_state.sessions.clear();
+    s_state.selected_meeting = -1;
+    render_races_locked();
+    lvgl_port_unlock();
+}
+
+void session_selector_show_sessions(uint32_t meeting_key, const std::vector<f1::Session> &sessions)
+{
+    if (!s_state.initialized || !lvgl_port_lock(1000)) {
+        return;
+    }
+    if (s_state.page == page_t::sessions && s_state.selected_meeting >= 0 &&
+        s_state.meetings[s_state.selected_meeting].key == meeting_key) {
+        s_state.sessions = sessions;
+        render_sessions_locked();
+    }
+    lvgl_port_unlock();
+}
+
+void session_selector_show_status(const char *text)
+{
+    if (!s_state.initialized || !lvgl_port_lock(1000)) {
+        return;
+    }
+    set_status_locked(text);
+    lvgl_port_unlock();
 }
 
 bool session_selector_get_selected_session(uint32_t *meeting_key, uint32_t *session_key)
