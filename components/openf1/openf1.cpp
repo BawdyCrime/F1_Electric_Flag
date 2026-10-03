@@ -19,6 +19,9 @@ namespace {
 constexpr char BASE_URL[] = "https://api.openf1.org/v1";
 constexpr char TOKEN_URL[] = "https://api.openf1.org/token";
 constexpr int TOKEN_EXPIRY_MARGIN_S = 60;
+constexpr int LIVE_OVERLAP_S = 15;
+constexpr int LIVE_FIRST_INTERVAL_WINDOW_S = 30;
+constexpr int LIVE_LAP_WINDOW_S = 300; // longer than a safety-car lap, to find the leader's current lap
 constexpr int DEFAULT_TOKEN_LIFETIME_S = 3600;
 static const char *TAG = "openf1";
 
@@ -403,17 +406,18 @@ esp_err_t fetch_stints(uint32_t session_key, std::vector<f1::Stint> *stints)
     return ESP_OK;
 }
 
-esp_err_t fetch_snapshot(uint32_t session_key, time_t at_epoch, int window_s, f1::TimingSnapshot *snapshot)
+namespace {
+
+// Shared by replay and live: the callers differ only in the time filters appended to each query.
+// Samples are returned in chronological order, so later entries overwrite earlier ones.
+esp_err_t fetch_timing(uint32_t session_key, const std::string &position_filter, const std::string &interval_filter,
+                       const std::string &lap_filter, f1::TimingSnapshot *snapshot)
 {
-    if (snapshot == nullptr) {
-        return ESP_ERR_INVALID_ARG;
-    }
     f1::TimingSnapshot result;
     esp_err_t err = ESP_OK;
 
-    // Position rows are only emitted on change (~300 per race), so query from the session start.
-    // Samples are returned in chronological order, so later entries overwrite earlier ones.
-    cJSON *positions = get_array(session_url("position", session_key) + "&date%3C=" + format_utc_time(at_epoch), &err);
+    // Position rows are only emitted on change (~300 per race).
+    cJSON *positions = get_array(session_url("position", session_key) + position_filter, &err);
     if (positions == nullptr) {
         return err;
     }
@@ -436,7 +440,7 @@ esp_err_t fetch_snapshot(uint32_t session_key, time_t at_epoch, int window_s, f1
     std::sort(result.positions.begin(), result.positions.end(),
               [](const f1::Position &a, const f1::Position &b) { return a.position < b.position; });
 
-    cJSON *intervals = get_array(session_url("intervals", session_key) + window_filter(at_epoch, window_s), &err);
+    cJSON *intervals = get_array(session_url("intervals", session_key) + interval_filter, &err);
     if (intervals != nullptr) {
         cJSON_ArrayForEach(item, intervals) {
             const uint32_t number = json_uint(item, "driver_number");
@@ -459,9 +463,7 @@ esp_err_t fetch_snapshot(uint32_t session_key, time_t at_epoch, int window_s, f1
     }
 
     // Leader's current lap: latest lap started at or before the instant.
-    cJSON *laps = get_array(session_url("laps", session_key) + "&date_start%3E=" +
-                                format_utc_time(at_epoch - 120) + "&date_start%3C=" + format_utc_time(at_epoch),
-                            &err);
+    cJSON *laps = get_array(session_url("laps", session_key) + lap_filter, &err);
     if (laps != nullptr) {
         cJSON_ArrayForEach(item, laps) {
             result.lap = std::max(result.lap, json_uint(item, "lap_number"));
@@ -471,6 +473,36 @@ esp_err_t fetch_snapshot(uint32_t session_key, time_t at_epoch, int window_s, f1
 
     *snapshot = std::move(result);
     return ESP_OK;
+}
+
+}  // namespace
+
+esp_err_t fetch_snapshot(uint32_t session_key, time_t at_epoch, int window_s, f1::TimingSnapshot *snapshot)
+{
+    if (snapshot == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return fetch_timing(session_key, "&date%3C=" + format_utc_time(at_epoch), window_filter(at_epoch, window_s),
+                        "&date_start%3E=" + format_utc_time(at_epoch - 120) + "&date_start%3C=" + format_utc_time(at_epoch),
+                        snapshot);
+}
+
+esp_err_t fetch_live_update(uint32_t session_key, time_t since_epoch, time_t until_epoch, f1::TimingSnapshot *update)
+{
+    if (update == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    // Overlap with the previous poll: rows can be ingested slightly after their timestamp.
+    // Re-reading them is harmless because the caller merges by driver.
+    const time_t from = since_epoch > 0 ? since_epoch - LIVE_OVERLAP_S : 0;
+    // Rows after until_epoch are excluded so a user-set broadcast delay holds the display back.
+    const std::string until = "&date%3C=" + format_utc_time(until_epoch);
+    const std::string position_filter = (from > 0 ? "&date%3E=" + format_utc_time(from) : "") + until;
+    const time_t interval_from = from > 0 ? from : until_epoch - LIVE_FIRST_INTERVAL_WINDOW_S;
+    return fetch_timing(session_key, position_filter, "&date%3E=" + format_utc_time(interval_from) + until,
+                        "&date_start%3E=" + format_utc_time(until_epoch - LIVE_LAP_WINDOW_S) +
+                            "&date_start%3C=" + format_utc_time(until_epoch),
+                        update);
 }
 
 esp_err_t fetch_laps(uint32_t session_key, time_t from_epoch, time_t to_epoch, std::vector<f1::LapTime> *laps)

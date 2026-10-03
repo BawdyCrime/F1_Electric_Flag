@@ -97,12 +97,23 @@ static void load_sessions(uint32_t meeting_key)
 }
 
 // Replay of a past session: a virtual clock starts at the session start and advances in real time.
+// Live: the same state and rendering, but the clock is wall time and queries fetch only what changed.
+// Live polling stays under the OpenF1 limit (30 req/min): 3 requests per tick plus an occasional refresh.
 constexpr int REPLAY_TICK_MS = 5000;
+constexpr int LIVE_TICK_MS = 8000;
+constexpr int LIVE_REFRESH_S = 30;     // live: stints and qualifying segments change during the session
+constexpr int LIVE_PRESTART_S = 600;   // live mode starts this long before the scheduled start
+constexpr int LIVE_POSTEND_S = 300;    // and ends this long after the scheduled end
 constexpr int REPLAY_WINDOW_S = 10;
 constexpr int LAP_LOOKBACK_S = 300; // longer than any lap that could still set a best time
 
 struct replay_t {
     volatile bool active = false;
+    bool live = false;
+    uint32_t lap = 0;         // leader's current lap
+    time_t last_update = 0;   // live: wall time of the last successful update
+    time_t last_refresh = 0;  // live: wall time of the last stints/segments refresh
+    std::vector<f1::Position> positions; // last known position per driver, kept across ticks
     volatile int64_t t0_us = 0; // esp_timer time when the replay clock started (t = 0, first data received)
     volatile int offset_s = 0;  // user sync offset added to t, adjusted from the header touch area
     volatile bool reset_pending = false;
@@ -139,12 +150,18 @@ static bool is_race_session()
 // Replay time in session UTC: session start plus the time elapsed on the internal clock.
 static time_t replay_now()
 {
+    if (s_replay.live) {
+        return time(nullptr) + s_replay.offset_s; // offset_s <= 0: broadcast delay
+    }
     return s_replay.start + s_replay.offset_s + static_cast<time_t>((esp_timer_get_time() - s_replay.t0_us) / 1000000);
 }
 
 // Session time the data requested now will represent when it arrives.
 static time_t replay_query_time()
 {
+    if (s_replay.live) {
+        return replay_now();
+    }
     return replay_now() + s_replay.delay_s;
 }
 
@@ -316,25 +333,83 @@ static void replay_tick_best_laps()
     flag_display_show_event_timing(title.c_str(), 0, 0, rows.data(), rows.size());
 }
 
+static bool is_qualifying_session()
+{
+    return strcasecmp(s_replay.session_name.c_str(), "Qualifying") == 0 ||
+           strcasecmp(s_replay.session_name.c_str(), "Sprint Qualifying") == 0;
+}
+
+// Live only: drivers may not be published before the session starts, and stints/segments grow while it runs.
+// Returns false while the session is not ready to show.
+static bool live_prepare()
+{
+    if (s_replay.drivers.empty() && openf1::fetch_drivers(s_replay.session_key, &s_replay.drivers) != ESP_OK) {
+        ESP_LOGW(TAG, "Live: drivers not available yet");
+        return false;
+    }
+    const time_t now = time(nullptr);
+    if (now - s_replay.last_refresh >= LIVE_REFRESH_S) {
+        s_replay.last_refresh = now;
+        if (openf1::fetch_stints(s_replay.session_key, &s_replay.stints) != ESP_OK) {
+            ESP_LOGW(TAG, "Live: unable to refresh stints");
+        }
+        if (is_qualifying_session()) {
+            openf1::fetch_segments(s_replay.session_key, &s_replay.segments);
+        }
+    }
+    return true;
+}
+
 static void replay_tick()
 {
     if (s_replay.reset_pending) {
         // Time jumped; drop state accumulated from the old timeline.
         s_replay.reset_pending = false;
+        s_replay.last_update = 0;
         s_replay.intervals.clear();
+        s_replay.positions.clear();
         s_replay.bests.clear();
         s_replay.last_lap_query = 0;
         s_replay.segment = -1;
+    }
+    if (s_replay.live && !live_prepare()) {
+        return;
     }
     if (!is_race_session()) {
         replay_tick_best_laps();
         return;
     }
     f1::TimingSnapshot snapshot;
-    esp_err_t err = openf1::fetch_snapshot(s_replay.session_key, replay_query_time(), REPLAY_WINDOW_S, &snapshot);
+    esp_err_t err;
+    if (s_replay.live) {
+        const time_t until = replay_now();
+        err = openf1::fetch_live_update(s_replay.session_key, s_replay.last_update, until, &snapshot);
+        if (err == ESP_OK) {
+            s_replay.last_update = until;
+        }
+    } else {
+        err = openf1::fetch_snapshot(s_replay.session_key, replay_query_time(), REPLAY_WINDOW_S, &snapshot);
+    }
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "Replay snapshot failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, "%s timing update failed: %s", s_replay.live ? "Live" : "Replay", esp_err_to_name(err));
         return;
+    }
+
+    // Both modes deliver per-driver rows; merge them into the state kept across ticks.
+    for (const f1::Position &fresh : snapshot.positions) {
+        auto known = std::find_if(s_replay.positions.begin(), s_replay.positions.end(),
+                                  [&](const f1::Position &p) { return p.driver_number == fresh.driver_number; });
+        if (known != s_replay.positions.end()) {
+            *known = fresh;
+        } else {
+            s_replay.positions.push_back(fresh);
+        }
+    }
+    std::sort(s_replay.positions.begin(), s_replay.positions.end(),
+              [](const f1::Position &a, const f1::Position &b) { return a.position < b.position; });
+    // Live deltas carry no lap when the leader's lap row is outside the window; keep the last one.
+    if (snapshot.lap > 0 || !s_replay.live) {
+        s_replay.lap = snapshot.lap;
     }
 
     for (const f1::Interval &fresh : snapshot.intervals) {
@@ -347,12 +422,12 @@ static void replay_tick()
         }
     }
 
-    const size_t count = std::min(snapshot.positions.size(), EVENT_TIMING_MAX_ROWS);
+    const size_t count = std::min(s_replay.positions.size(), EVENT_TIMING_MAX_ROWS);
     std::vector<event_timing_row_t> rows(count);
     std::vector<std::array<char, 4>> codes(count);
     std::vector<std::string> gaps(count);
     for (size_t i = 0; i < count; ++i) {
-        const f1::Position &position = snapshot.positions[i];
+        const f1::Position &position = s_replay.positions[i];
         const f1::Driver *driver = find_driver(position.driver_number);
         codes[i] = {'-', '-', '-', '\0'};
         rows[i].position = static_cast<uint8_t>(position.position);
@@ -369,9 +444,9 @@ static void replay_tick()
         }
         rows[i].driver_code = codes[i].data();
         rows[i].interval = gaps[i].c_str();
-        rows[i].tyre = tyre_for(position.driver_number, snapshot.lap);
+        rows[i].tyre = tyre_for(position.driver_number, s_replay.lap);
     }
-    flag_display_show_event_timing(s_replay.session_name.c_str(), snapshot.lap, s_replay.total_laps,
+    flag_display_show_event_timing(s_replay.session_name.c_str(), s_replay.lap, s_replay.total_laps,
                                    rows.data(), rows.size());
 }
 
@@ -381,7 +456,16 @@ void replay_adjust_offset(int delta_s)
     if (!s_replay.active) {
         return;
     }
-    s_replay.offset_s = s_replay.offset_s + delta_s;
+    if (s_replay.live) {
+        // Live can only be held back (delay), never ahead of real time; the API has no delay option.
+        const int offset = std::min(s_replay.offset_s + delta_s, 0);
+        if (offset == s_replay.offset_s) {
+            return;
+        }
+        s_replay.offset_s = offset;
+    } else {
+        s_replay.offset_s = s_replay.offset_s + delta_s;
+    }
     s_replay.reset_pending = true;
     flag_display_update_race_time(header_remaining(replay_now()));
     post_request(request_type_t::refresh_replay, 0);
@@ -410,7 +494,17 @@ static void show_timing(uint32_t session_key)
     }
     session_selector_set_active(false);
 
-    if (selected->start_epoch > time(nullptr)) {
+    const time_t now = time(nullptr);
+    // Mode decision: sessions in progress (or about to start / just ended) are live, past ones are replayed.
+    s_replay.live = now >= selected->start_epoch - LIVE_PRESTART_S && now <= selected->end_epoch + LIVE_POSTEND_S;
+    ESP_LOGI(TAG, "Session mode: %s", s_replay.live ? "LIVE" : "REPLAY");
+    if (s_replay.live) {
+        s_replay.active = true; // live_prepare() loads drivers on the first ticks, retrying until published
+        replay_tick();
+        flag_display_update_race_time(header_remaining(now));
+        return;
+    }
+    if (selected->start_epoch > now) {
         return; // not started yet, nothing to replay
     }
     if (openf1::fetch_drivers(session_key, &s_replay.drivers) != ESP_OK) {
@@ -422,8 +516,7 @@ static void show_timing(uint32_t session_key)
             s_replay.total_laps = std::max(s_replay.total_laps, stint.lap_end);
         }
     }
-    if (strcasecmp(selected->name.c_str(), "Qualifying") == 0 ||
-        strcasecmp(selected->name.c_str(), "Sprint Qualifying") == 0) {
+    if (is_qualifying_session()) {
         if (openf1::fetch_segments(session_key, &s_replay.segments) != ESP_OK) {
             ESP_LOGW(TAG, "Unable to load qualifying segments");
         }
@@ -444,7 +537,8 @@ static void data_task(void *)
 {
     request_t request = {};
     while (true) {
-        const TickType_t wait = s_replay.active ? pdMS_TO_TICKS(REPLAY_TICK_MS) : portMAX_DELAY;
+        const TickType_t wait =
+            s_replay.active ? pdMS_TO_TICKS(s_replay.live ? LIVE_TICK_MS : REPLAY_TICK_MS) : portMAX_DELAY;
         if (xQueueReceive(s_requests, &request, wait) != pdPASS) {
             if (s_replay.active) {
                 replay_tick(); // queries use the internal clock's current time, however long the last fetch took
