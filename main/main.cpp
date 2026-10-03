@@ -135,7 +135,17 @@ struct replay_t {
     std::vector<best_t> bests;
     time_t last_lap_query = 0;
     std::vector<f1::Segment> segments; // qualifying only: Q1, Q2, Q3
+    bool hold_flag = false;            // a flag screen owns the display; skip timing redraws
     int segment = -1;                  // segment the table currently belongs to
+    // Race control: processed up to rc_when (rc_count messages already applied at that second).
+    time_t rc_when = 0;
+    size_t rc_count = 0;
+    bool red = false;
+    bool chequered = false;
+    bool sc = false;
+    bool vsc = false;
+    int sector_yellow[64] = {};  // per sector: 0 clear, 1 yellow, 2 double yellow
+    flag_screen_t shown_flag = FLAG_SCREEN_EVENT_TIMING;
 };
 
 static replay_t s_replay;
@@ -330,7 +340,9 @@ static void replay_tick_best_laps()
         rows[i].interval = times[i].c_str();
         rows[i].tyre = tyre_for(entries[i].driver_number, entries[i].last_lap);
     }
-    flag_display_show_event_timing(title.c_str(), 0, 0, rows.data(), rows.size());
+    if (!s_replay.hold_flag) {
+        flag_display_show_event_timing(title.c_str(), 0, 0, rows.data(), rows.size());
+    }
 }
 
 static bool is_qualifying_session()
@@ -360,6 +372,93 @@ static bool live_prepare()
     return true;
 }
 
+// Applies new race control messages and switches the display to the active flag, or briefly to green on clear.
+// Returns true while the flag screens (including the green flash) must not be overwritten by the timing table.
+static bool update_flags()
+{
+    const time_t until = s_replay.live ? replay_now() : replay_query_time();
+    std::vector<f1::RaceControl> messages;
+    if (openf1::fetch_race_control(s_replay.session_key, s_replay.rc_when, until, &messages) != ESP_OK) {
+        return s_replay.shown_flag != FLAG_SCREEN_EVENT_TIMING;
+    }
+    size_t skip = s_replay.rc_count;
+    for (const f1::RaceControl &m : messages) {
+        if (m.when == s_replay.rc_when && skip > 0) {
+            --skip;
+            continue;
+        }
+        if (m.when != s_replay.rc_when) {
+            s_replay.rc_when = m.when;
+            s_replay.rc_count = 0;
+        }
+        ++s_replay.rc_count;
+        const bool clear = m.flag == "CLEAR" || m.flag == "GREEN";
+        if (m.category == "SafetyCar") {
+            const bool virt = m.message.find("VIRTUAL") != std::string::npos;
+            const bool deployed = m.message.find("DEPLOYED") != std::string::npos;
+            (virt ? s_replay.vsc : s_replay.sc) = deployed;
+            if (!virt && !deployed) {
+                s_replay.vsc = s_replay.vsc && m.message.find("ENDING") == std::string::npos;
+            }
+        } else if (m.scope == "Track") {
+            if (m.flag == "RED") {
+                s_replay.red = true;
+            } else if (m.flag == "CHEQUERED") {
+                s_replay.chequered = true;
+            } else if (clear) {
+                s_replay.red = false;
+                std::fill(std::begin(s_replay.sector_yellow), std::end(s_replay.sector_yellow), 0);
+            } else if (m.flag == "YELLOW" || m.flag == "DOUBLE YELLOW") {
+                s_replay.sector_yellow[0] = m.flag == "YELLOW" ? 1 : 2;
+            }
+        } else if (m.scope == "Sector" && m.sector < 64) {
+            s_replay.sector_yellow[m.sector] = m.flag == "YELLOW" ? 1 : m.flag == "DOUBLE YELLOW" ? 2 : 0;
+        }
+    }
+
+    int yellow = 0;
+    for (int level : s_replay.sector_yellow) {
+        yellow = std::max(yellow, level);
+    }
+    flag_screen_t wanted = FLAG_SCREEN_EVENT_TIMING;
+    if (s_replay.red) {
+        wanted = FLAG_SCREEN_RED;
+    } else if (s_replay.chequered) {
+        wanted = FLAG_SCREEN_CHEQUERED;
+    } else if (s_replay.sc) {
+        wanted = FLAG_SCREEN_SAFETY_CAR;
+    } else if (s_replay.vsc) {
+        wanted = FLAG_SCREEN_VSC;
+    } else if (yellow == 2) {
+        wanted = FLAG_SCREEN_DOUBLE_YELLOW;
+    } else if (yellow == 1) {
+        wanted = FLAG_SCREEN_YELLOW;
+    }
+
+    if (wanted == s_replay.shown_flag) {
+        return wanted != FLAG_SCREEN_EVENT_TIMING;
+    }
+    const flag_screen_t previous = s_replay.shown_flag;
+    s_replay.shown_flag = wanted;
+    switch (wanted) {
+    case FLAG_SCREEN_RED: flag_display_show_red(); break;
+    case FLAG_SCREEN_SAFETY_CAR: flag_display_show_safety_car(); break;
+    case FLAG_SCREEN_VSC: flag_display_show_vsc(); break;
+    case FLAG_SCREEN_DOUBLE_YELLOW: flag_display_show_double_yellow(); break;
+    case FLAG_SCREEN_YELLOW: flag_display_show_yellow(); break;
+    case FLAG_SCREEN_CHEQUERED: // no dedicated screen yet; keep the timing table
+        s_replay.shown_flag = FLAG_SCREEN_EVENT_TIMING;
+        return false;
+    default:
+        if (previous != FLAG_SCREEN_EVENT_TIMING) {
+            flag_display_show_green(); // reverts to the timing table by itself
+            return true;
+        }
+        break;
+    }
+    return wanted != FLAG_SCREEN_EVENT_TIMING;
+}
+
 static void replay_tick()
 {
     if (s_replay.reset_pending) {
@@ -371,10 +470,16 @@ static void replay_tick()
         s_replay.bests.clear();
         s_replay.last_lap_query = 0;
         s_replay.segment = -1;
+        s_replay.rc_when = 0;
+        s_replay.rc_count = 0;
+        s_replay.red = s_replay.chequered = s_replay.sc = s_replay.vsc = false;
+        std::fill(std::begin(s_replay.sector_yellow), std::end(s_replay.sector_yellow), 0);
+        s_replay.shown_flag = FLAG_SCREEN_EVENT_TIMING;
     }
     if (s_replay.live && !live_prepare()) {
         return;
     }
+    s_replay.hold_flag = update_flags();
     if (!is_race_session()) {
         replay_tick_best_laps();
         return;
@@ -446,8 +551,10 @@ static void replay_tick()
         rows[i].interval = gaps[i].c_str();
         rows[i].tyre = tyre_for(position.driver_number, s_replay.lap);
     }
-    flag_display_show_event_timing(s_replay.session_name.c_str(), s_replay.lap, s_replay.total_laps,
-                                   rows.data(), rows.size());
+    if (!s_replay.hold_flag) {
+        flag_display_show_event_timing(s_replay.session_name.c_str(), s_replay.lap, s_replay.total_laps,
+                                       rows.data(), rows.size());
+    }
 }
 
 // Header touch: shift replay time by delta_s to sync with the broadcast.

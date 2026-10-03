@@ -34,4 +34,8 @@ esp_err_t fetch_laps(uint32_t session_key, time_t from_epoch, time_t to_epoch, s
 // Running periods from race control "SESSION STARTED"/"SESSION FINISHED" messages, in order.
 esp_err_t fetch_segments(uint32_t session_key, std::vector<f1::Segment> *segments);
 
+// Flag and safety car race control messages with date in [from_epoch, until_epoch], chronological. from 0 = no lower bound.
+esp_err_t fetch_race_control(uint32_t session_key, time_t from_epoch, time_t until_epoch,
+                            std::vector<f1::RaceControl> *messages);
+
 }  // namespace openf1

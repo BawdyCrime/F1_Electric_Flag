@@ -564,4 +564,38 @@ esp_err_t fetch_segments(uint32_t session_key, std::vector<f1::Segment> *segment
     return ESP_OK;
 }
 
+esp_err_t fetch_race_control(uint32_t session_key, time_t from_epoch, time_t until_epoch,
+                            std::vector<f1::RaceControl> *messages)
+{
+    if (messages == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    esp_err_t err = ESP_OK;
+    std::string url = session_url("race_control", session_key) + "&date%3C=" + format_utc_time(until_epoch);
+    if (from_epoch > 0) {
+        url += "&date%3E=" + format_utc_time(from_epoch);
+    }
+    cJSON *root = get_array(url, &err);
+    if (root == nullptr) {
+        return err;
+    }
+    messages->clear();
+    const cJSON *item = nullptr;
+    cJSON_ArrayForEach(item, root) {
+        f1::RaceControl entry;
+        entry.category = json_string(item, "category");
+        if (entry.category != "Flag" && entry.category != "SafetyCar") {
+            continue;
+        }
+        entry.when = parse_utc_time(json_string(item, "date"));
+        entry.flag = json_string(item, "flag");
+        entry.scope = json_string(item, "scope");
+        entry.message = json_string(item, "message");
+        entry.sector = json_uint(item, "sector");
+        messages->push_back(std::move(entry));
+    }
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
 }  // namespace openf1
