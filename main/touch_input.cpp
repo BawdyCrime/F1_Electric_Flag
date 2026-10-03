@@ -1,16 +1,22 @@
 #include "touch_input.h"
 
+#include "bsp_display.h"
 #include "bsp_touch.h"
+#include "flag_display.h"
+#include "screen_header.h"
 #include "session_selector.h"
 
 #include "esp_log.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 static const char *TAG = "touch_input";
+static constexpr int OFFSET_STEP_S = 10;
 
 static void touch_task(void *)
 {
+    bool was_pressed = false;
     while (true) {
         bsp_touch_point_t point = {};
         esp_err_t err = bsp_touch_read(&point);
@@ -20,6 +26,15 @@ static void touch_task(void *)
             continue;
         }
         session_selector_handle_touch(point.pressed, point.x, point.y);
+        const bool on_logo = screen_header_hit_logo(point.x, point.y);
+        if (point.pressed && !was_pressed && on_logo) {
+            esp_restart(); // hidden feature: touching the logo on any page restarts the board
+        }
+        if (point.pressed && !was_pressed && !on_logo && flag_display_get_current_screen() == FLAG_SCREEN_EVENT_TIMING &&
+            screen_header_hit_header(point.x, point.y)) {
+            replay_adjust_offset(point.x < BSP_DISPLAY_PANEL_WIDTH / 2 ? -OFFSET_STEP_S : OFFSET_STEP_S);
+        }
+        was_pressed = point.pressed;
         vTaskDelay(pdMS_TO_TICKS(30));
     }
 }

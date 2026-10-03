@@ -5,6 +5,9 @@
 static constexpr int32_t HEADER_HEIGHT = BSP_DISPLAY_PANEL_HEIGHT - BSP_DISPLAY_PANEL_WIDTH;
 static constexpr int32_t LOGO_ROW_HEIGHT = 70;
 static constexpr int32_t LAP_ROW_HEIGHT = 40;
+static constexpr int32_t LOGO_TOP = 8;
+static constexpr int32_t LOGO_WIDTH = 192;
+static constexpr int32_t LOGO_HEIGHT = 48;
 
 extern "C" const uint8_t _binary_f1_logo_192x48_rgb565_start[];
 
@@ -24,11 +27,22 @@ static const lv_image_dsc_t F1_LOGO_IMAGE = {
     .reserved_2 = nullptr,
 };
 
+bool screen_header_hit_header(int x, int y)
+{
+    return x >= 0 && x < BSP_DISPLAY_PANEL_WIDTH && y >= 0 && y < HEADER_HEIGHT;
+}
+
+bool screen_header_hit_logo(int x, int y)
+{
+    const int left = (BSP_DISPLAY_PANEL_WIDTH - LOGO_WIDTH) / 2;
+    return x >= left && x < left + LOGO_WIDTH && y >= LOGO_TOP && y < LOGO_TOP + LOGO_HEIGHT;
+}
+
 void screen_header_create(lv_obj_t *parent)
 {
     lv_obj_t *logo = lv_image_create(parent);
     lv_image_set_src(logo, &F1_LOGO_IMAGE);
-    lv_obj_align(logo, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_align(logo, LV_ALIGN_TOP_MID, 0, LOGO_TOP);
 }
 
 static void update_lap_label(flag_view_t *view, const char *title) {

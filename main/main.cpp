@@ -31,6 +31,7 @@ enum class request_type_t : uint8_t {
     load_meetings,
     load_sessions,
     show_timing,
+    refresh_replay,
 };
 
 struct request_t {
@@ -102,7 +103,10 @@ constexpr int LAP_LOOKBACK_S = 300; // longer than any lap that could still set 
 
 struct replay_t {
     volatile bool active = false;
-    volatile int64_t t0_us = 0; // esp_timer time when the replay clock started (t = 0)
+    volatile int64_t t0_us = 0; // esp_timer time when the replay clock started (t = 0, first data received)
+    volatile int offset_s = 0;  // user sync offset added to t, adjusted from the header touch area
+    volatile bool reset_pending = false;
+    volatile int delay_s = 0;   // measured request-to-data latency; queries ask for t + delay
     uint32_t session_key = 0;
     std::string session_name;
     uint32_t total_laps = 0;
@@ -135,7 +139,13 @@ static bool is_race_session()
 // Replay time in session UTC: session start plus the time elapsed on the internal clock.
 static time_t replay_now()
 {
-    return s_replay.start + static_cast<time_t>((esp_timer_get_time() - s_replay.t0_us) / 1000000);
+    return s_replay.start + s_replay.offset_s + static_cast<time_t>((esp_timer_get_time() - s_replay.t0_us) / 1000000);
+}
+
+// Session time the data requested now will represent when it arrives.
+static time_t replay_query_time()
+{
+    return replay_now() + s_replay.delay_s;
 }
 
 // Seconds shown in the header: time left in the current qualifying segment, otherwise in the session.
@@ -209,7 +219,7 @@ static std::string format_lap_time(double seconds)
 // Practice/qualifying style table: ordered by best lap, P1 shows its time, the rest the gap to P1.
 static void replay_tick_best_laps()
 {
-    const time_t now = replay_now();
+    const time_t now = replay_query_time();
 
     // Qualifying: a new segment starts a fresh table.
     int segment = -1;
@@ -308,12 +318,20 @@ static void replay_tick_best_laps()
 
 static void replay_tick()
 {
+    if (s_replay.reset_pending) {
+        // Time jumped; drop state accumulated from the old timeline.
+        s_replay.reset_pending = false;
+        s_replay.intervals.clear();
+        s_replay.bests.clear();
+        s_replay.last_lap_query = 0;
+        s_replay.segment = -1;
+    }
     if (!is_race_session()) {
         replay_tick_best_laps();
         return;
     }
     f1::TimingSnapshot snapshot;
-    esp_err_t err = openf1::fetch_snapshot(s_replay.session_key, replay_now(), REPLAY_WINDOW_S, &snapshot);
+    esp_err_t err = openf1::fetch_snapshot(s_replay.session_key, replay_query_time(), REPLAY_WINDOW_S, &snapshot);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Replay snapshot failed: %s", esp_err_to_name(err));
         return;
@@ -357,6 +375,18 @@ static void replay_tick()
                                    rows.data(), rows.size());
 }
 
+// Header touch: shift replay time by delta_s to sync with the broadcast.
+void replay_adjust_offset(int delta_s)
+{
+    if (!s_replay.active) {
+        return;
+    }
+    s_replay.offset_s = s_replay.offset_s + delta_s;
+    s_replay.reset_pending = true;
+    flag_display_update_race_time(header_remaining(replay_now()));
+    post_request(request_type_t::refresh_replay, 0);
+}
+
 static void show_timing(uint32_t session_key)
 {
     const f1::Session *selected = nullptr;
@@ -398,9 +428,16 @@ static void show_timing(uint32_t session_key)
             ESP_LOGW(TAG, "Unable to load qualifying segments");
         }
     }
-    s_replay.t0_us = esp_timer_get_time();
-    s_replay.active = true;
+    // The first request is made at t = 0; the countdown starts once its data arrives, and the
+    // measured latency is added to later request times.
+    const int64_t request_us = esp_timer_get_time();
+    s_replay.t0_us = request_us;
     replay_tick();
+    const int64_t arrived_us = esp_timer_get_time();
+    s_replay.delay_s = static_cast<int>((arrived_us - request_us) / 1000000);
+    s_replay.t0_us = arrived_us;
+    flag_display_update_race_time(header_remaining(replay_now()));
+    s_replay.active = true;
 }
 
 static void data_task(void *)
@@ -425,6 +462,11 @@ static void data_task(void *)
             break;
         case request_type_t::show_timing:
             show_timing(request.session_key);
+            break;
+        case request_type_t::refresh_replay:
+            if (s_replay.active) {
+                replay_tick();
+            }
             break;
         }
     }
