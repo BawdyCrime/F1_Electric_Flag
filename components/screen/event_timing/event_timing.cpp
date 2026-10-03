@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <cstring>
 
 extern "C" {
 extern const uint8_t _binary_team_logo_rbr_rgb565_start[];
@@ -68,62 +70,68 @@ static const lv_image_dsc_t TEAM_LOGO_AUD = make_team_logo(_binary_team_logo_aud
 static const lv_image_dsc_t TEAM_LOGO_HAS = make_team_logo(_binary_team_logo_has_rgb565_start);
 static const lv_image_dsc_t TEAM_LOGO_CAD = make_team_logo(_binary_team_logo_cad_rgb565_start);
 
-lv_color_t team_color(flag_team_t team) {
-    switch (team) {
-        case FLAG_TEAM_RED_BULL_RACING:
-            return lv_color_hex(0x3671C6);
-        case FLAG_TEAM_MCLAREN:
-            return lv_color_hex(0xF58020);
-        case FLAG_TEAM_FERRARI:
-            return lv_color_hex(0xE8002D);
-        case FLAG_TEAM_MERCEDES:
-            return lv_color_hex(0x27F4D2);
-        case FLAG_TEAM_ASTON_MARTIN:
-            return lv_color_hex(0x229971);
-        case FLAG_TEAM_ALPINE:
-            return lv_color_hex(0x00A1E8);
-        case FLAG_TEAM_WILLIAMS:
-            return lv_color_hex(0x64C4FF);
-        case FLAG_TEAM_RACING_BULLS:
-            return lv_color_hex(0x6692FF);
-        case FLAG_TEAM_AUDI:
-            return lv_color_hex(0xBB0A30);
-        case FLAG_TEAM_HAAS:
-            return lv_color_hex(0xB6BABD);
-        case FLAG_TEAM_CADILLAC:
-            return lv_color_hex(0xFFD700);
-        default:
-            return lv_color_white();
+struct TeamInfo {
+    f1_team_t team;
+    const char *code;
+    const char *colour;      // OpenF1 team_colour hex
+    const char *aliases;     // '|' separated lowercase OpenF1 team_name variants
+    const lv_image_dsc_t *logo;
+};
+
+const TeamInfo TEAMS[] = {
+    {F1_TEAM_RED_BULL_RACING, "RBR", "3671C6", "red bull racing|red bull|oracle red bull racing", &TEAM_LOGO_RBR},
+    {F1_TEAM_MCLAREN, "MCL", "F58020", "mclaren|mclaren f1 team", &TEAM_LOGO_MCL},
+    {F1_TEAM_FERRARI, "FER", "E8002D", "ferrari|scuderia ferrari", &TEAM_LOGO_FER},
+    {F1_TEAM_MERCEDES, "MER", "27F4D2", "mercedes|mercedes-amg petronas", &TEAM_LOGO_MER},
+    {F1_TEAM_ASTON_MARTIN, "AST", "229971", "aston martin|aston martin aramco", &TEAM_LOGO_AST},
+    {F1_TEAM_ALPINE, "ALP", "00A1E8", "alpine|bwt alpine f1 team", &TEAM_LOGO_ALP},
+    {F1_TEAM_WILLIAMS, "WIL", "64C4FF", "williams|atlassian williams", &TEAM_LOGO_WIL},
+    {F1_TEAM_RACING_BULLS, "RB", "6692FF", "racing bulls|rb|visa cash app rb|alphatauri", &TEAM_LOGO_RB},
+    {F1_TEAM_AUDI, "AUD", "BB0A30", "audi|kick sauber|stake f1 team kick sauber|sauber", &TEAM_LOGO_AUD},
+    {F1_TEAM_HAAS, "HAS", "B6BABD", "haas|haas f1 team|moneygram haas f1 team", &TEAM_LOGO_HAS},
+    {F1_TEAM_CADILLAC, "CAD", "FFD700", "cadillac|cadillac f1 team", &TEAM_LOGO_CAD},
+};
+
+const TeamInfo *find_team(f1_team_t team) {
+    for (const TeamInfo &t : TEAMS) {
+        if (t.team == team) {
+            return &t;
+        }
     }
+    return nullptr;
 }
 
-const lv_image_dsc_t *team_logo_image(flag_team_t team) {
-    switch (team) {
-        case FLAG_TEAM_RED_BULL_RACING:
-            return &TEAM_LOGO_RBR;
-        case FLAG_TEAM_MCLAREN:
-            return &TEAM_LOGO_MCL;
-        case FLAG_TEAM_FERRARI:
-            return &TEAM_LOGO_FER;
-        case FLAG_TEAM_MERCEDES:
-            return &TEAM_LOGO_MER;
-        case FLAG_TEAM_ASTON_MARTIN:
-            return &TEAM_LOGO_AST;
-        case FLAG_TEAM_ALPINE:
-            return &TEAM_LOGO_ALP;
-        case FLAG_TEAM_WILLIAMS:
-            return &TEAM_LOGO_WIL;
-        case FLAG_TEAM_RACING_BULLS:
-            return &TEAM_LOGO_RB;
-        case FLAG_TEAM_AUDI:
-            return &TEAM_LOGO_AUD;
-        case FLAG_TEAM_HAAS:
-            return &TEAM_LOGO_HAS;
-        case FLAG_TEAM_CADILLAC:
-            return &TEAM_LOGO_CAD;
-        default:
-            return nullptr;
+bool iequals(const char *a, const char *b, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i]))) {
+            return false;
+        }
     }
+    return true;
+}
+
+bool alias_match(const char *aliases, const char *name) {
+    const size_t name_len = std::strlen(name);
+    while (*aliases != '\0') {
+        const char *end = std::strchr(aliases, '|');
+        const size_t len = end != nullptr ? static_cast<size_t>(end - aliases) : std::strlen(aliases);
+        if (len == name_len && iequals(aliases, name, len)) {
+            return true;
+        }
+        aliases += len + (end != nullptr ? 1 : 0);
+    }
+    return false;
+}
+
+lv_color_t team_color(f1_team_t team) {
+    const TeamInfo *info = find_team(team);
+    return info != nullptr ? lv_color_hex(static_cast<uint32_t>(std::strtoul(info->colour, nullptr, 16)))
+                           : lv_color_white();
+}
+
+const lv_image_dsc_t *team_logo_image(f1_team_t team) {
+    const TeamInfo *info = find_team(team);
+    return info != nullptr ? info->logo : nullptr;
 }
 
 lv_color_t tyre_color(char tyre) {
@@ -211,6 +219,41 @@ void create_row(lv_obj_t *panel, const event_timing_row_t &row) {
 }
 
 } // namespace
+
+f1_team_t f1_team_from_name(const char *name) {
+    if (name == nullptr) {
+        return F1_TEAM_UNKNOWN;
+    }
+    for (const TeamInfo &t : TEAMS) {
+        if (iequals(t.code, name, std::strlen(t.code)) && std::strlen(name) == std::strlen(t.code)) {
+            return t.team;
+        }
+        if (alias_match(t.aliases, name)) {
+            return t.team;
+        }
+    }
+    return F1_TEAM_UNKNOWN;
+}
+
+f1_team_t f1_team_from_colour(const char *hex) {
+    if (hex == nullptr) {
+        return F1_TEAM_UNKNOWN;
+    }
+    if (*hex == '#') {
+        ++hex;
+    }
+    for (const TeamInfo &t : TEAMS) {
+        if (std::strlen(hex) == 6 && iequals(t.colour, hex, 6)) {
+            return t.team;
+        }
+    }
+    return F1_TEAM_UNKNOWN;
+}
+
+const char *f1_team_code(f1_team_t team) {
+    const TeamInfo *info = find_team(team);
+    return info != nullptr ? info->code : "---";
+}
 
 const size_t EVENT_TIMING_MAX_ROWS = PANEL_HEIGHT / ROW_HEIGHT;
 

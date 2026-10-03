@@ -24,22 +24,31 @@ typedef enum {
 
 // One row of the event timing screen's driver table.
 typedef enum {
-    FLAG_TEAM_RED_BULL_RACING,
-    FLAG_TEAM_MCLAREN,
-    FLAG_TEAM_FERRARI,
-    FLAG_TEAM_MERCEDES,
-    FLAG_TEAM_ASTON_MARTIN,
-    FLAG_TEAM_ALPINE,
-    FLAG_TEAM_WILLIAMS,
-    FLAG_TEAM_RACING_BULLS,
-    FLAG_TEAM_AUDI,
-    FLAG_TEAM_HAAS,
-    FLAG_TEAM_CADILLAC,
-} flag_team_t;
+    F1_TEAM_RED_BULL_RACING,
+    F1_TEAM_MCLAREN,
+    F1_TEAM_FERRARI,
+    F1_TEAM_MERCEDES,
+    F1_TEAM_ASTON_MARTIN,
+    F1_TEAM_ALPINE,
+    F1_TEAM_WILLIAMS,
+    F1_TEAM_RACING_BULLS,
+    F1_TEAM_AUDI,
+    F1_TEAM_HAAS,
+    F1_TEAM_CADILLAC,
+    F1_TEAM_UNKNOWN, // no logo, white accent
+} f1_team_t;
+
+// Lookup helpers for live/replay data. Matching is case-insensitive.
+// Accepts OpenF1 team_name ("Red Bull Racing", "Haas F1 Team", "Kick Sauber"...) or short code ("RBR", "MCL"...).
+f1_team_t f1_team_from_name(const char *name);
+// Accepts OpenF1 team_colour hex (e.g. "3671C6", optional '#').
+f1_team_t f1_team_from_colour(const char *hex);
+// Short 3-letter team code, "---" for unknown.
+const char *f1_team_code(f1_team_t team);
 
 typedef struct {
     uint8_t position;
-    flag_team_t team;
+    f1_team_t team;
     const char *driver_code; // 3-letter driver code
     const char *interval;    // pre-formatted gap text, e.g. "Interval" or "+0.842"
     char tyre;                // compound letter: S, M, H, I, W
