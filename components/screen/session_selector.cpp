@@ -48,6 +48,7 @@ struct selector_state_t {
     int year = 0;
     session_selector_callbacks_t callbacks = {};
     bool initialized = false;
+    bool active = true;
     bool pointer_down = false;
     bool pointer_dragged = false;
     int pointer_start_x = 0;
@@ -381,9 +382,14 @@ esp_err_t session_selector_init(int year, const session_selector_callbacks_t &ca
     return ESP_OK;
 }
 
+void session_selector_set_active(bool active)
+{
+    s_state.active = active;
+}
+
 void session_selector_handle_touch(bool pressed, int x, int y)
 {
-    if (!s_state.initialized || !lvgl_port_lock(100)) {
+    if (!s_state.initialized || !s_state.active || !lvgl_port_lock(100)) {
         return;
     }
 

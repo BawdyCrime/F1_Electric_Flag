@@ -60,8 +60,9 @@ esp_err_t flag_display_init(void);
 // Returns the currently shown screen, including changes made internally (e.g. green auto-revert).
 flag_screen_t flag_display_get_current_screen(void);
 
+// Header shows session_name, or "RACE - LAP x/y" when session_name is "Race".
 // Shows the event timing table (clipped to however many rows fit on screen) and updates the shared header.
-esp_err_t flag_display_show_event_timing(uint32_t current_lap, uint32_t total_laps,
+esp_err_t flag_display_show_event_timing(const char *session_name, uint32_t current_lap, uint32_t total_laps,
                                          const event_timing_row_t *rows, size_t row_count);
 
 // Updates the shared header race time from the remaining duration in seconds.

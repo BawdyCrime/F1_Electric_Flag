@@ -21,3 +21,5 @@ void session_selector_show_meetings(const std::vector<f1::Meeting> &meetings);
 void session_selector_show_sessions(uint32_t meeting_key, const std::vector<f1::Session> &sessions);
 void session_selector_show_status(const char *text);
 bool session_selector_get_selected_session(uint32_t *meeting_key, uint32_t *session_key);
+// While inactive (another screen is shown) touches are ignored by the selector.
+void session_selector_set_active(bool active);

@@ -31,8 +31,8 @@ void screen_header_create(lv_obj_t *parent)
     lv_obj_align(logo, LV_ALIGN_TOP_MID, 0, 8);
 }
 
-static void update_lap_label(flag_view_t *view, uint32_t current_lap, uint32_t total_laps) {
-    lv_label_set_text_fmt(view->lap_header, "LAP %u/%u", (unsigned)current_lap, (unsigned)total_laps);
+static void update_lap_label(flag_view_t *view, const char *title) {
+    lv_label_set_text(view->lap_header, title != nullptr ? title : "");
 }
 
 static void update_time_label(flag_view_t *view, uint32_t remaining_seconds) {
@@ -43,13 +43,13 @@ static void update_time_label(flag_view_t *view, uint32_t remaining_seconds) {
                           (unsigned)seconds);
 }
 
-void screen_header_update(flag_view_t *view, uint32_t current_lap, uint32_t total_laps,
+void screen_header_update(flag_view_t *view, const char *title,
                           uint32_t remaining_seconds) {
-    update_lap_label(view, current_lap, total_laps);
+    update_lap_label(view, title);
     update_time_label(view, remaining_seconds);
 }
 
-void screen_header_create(flag_view_t *view, uint32_t current_lap, uint32_t total_laps,
+void screen_header_create(flag_view_t *view, const char *title,
                           uint32_t remaining_seconds) {
     view->screen = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(view->screen, lv_color_black(), 0);
@@ -73,7 +73,7 @@ void screen_header_create(flag_view_t *view, uint32_t current_lap, uint32_t tota
     lv_obj_set_style_text_color(view->lap_header, lv_color_white(), 0);
     lv_obj_set_style_text_font(view->lap_header, &lv_font_montserrat_36, 0);
     lv_obj_set_style_text_align(view->lap_header, LV_TEXT_ALIGN_CENTER, 0);
-    update_lap_label(view, current_lap, total_laps);
+    update_lap_label(view, title);
     lv_obj_update_layout(view->lap_header);
     const lv_coord_t lap_label_height = lv_obj_get_height(view->lap_header);
     const lv_coord_t lap_label_top = LOGO_ROW_HEIGHT + (LAP_ROW_HEIGHT - lap_label_height) / 2;
