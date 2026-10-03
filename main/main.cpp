@@ -395,10 +395,12 @@ static bool update_flags()
         const bool clear = m.flag == "CLEAR" || m.flag == "GREEN";
         if (m.category == "SafetyCar") {
             const bool virt = m.message.find("VIRTUAL") != std::string::npos;
-            const bool deployed = m.message.find("DEPLOYED") != std::string::npos;
-            (virt ? s_replay.vsc : s_replay.sc) = deployed;
-            if (!virt && !deployed) {
-                s_replay.vsc = s_replay.vsc && m.message.find("ENDING") == std::string::npos;
+            bool &state = virt ? s_replay.vsc : s_replay.sc;
+            if (m.message.find("DEPLOYED") != std::string::npos) {
+                state = true;
+            } else if (m.message.find("IN THIS LAP") != std::string::npos ||
+                       m.message.find("ENDING") != std::string::npos) {
+                state = false;
             }
         } else if (m.scope == "Track") {
             if (m.flag == "RED") {
@@ -406,7 +408,7 @@ static bool update_flags()
             } else if (m.flag == "CHEQUERED") {
                 s_replay.chequered = true;
             } else if (clear) {
-                s_replay.red = false;
+                s_replay.red = s_replay.sc = s_replay.vsc = false;
                 std::fill(std::begin(s_replay.sector_yellow), std::end(s_replay.sector_yellow), 0);
             } else if (m.flag == "YELLOW" || m.flag == "DOUBLE YELLOW") {
                 s_replay.sector_yellow[0] = m.flag == "YELLOW" ? 1 : 2;

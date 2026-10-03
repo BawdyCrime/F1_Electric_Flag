@@ -338,7 +338,7 @@ esp_err_t session_selector_init(int year, const session_selector_callbacks_t &ca
     lv_obj_set_width(s_state.title, BSP_DISPLAY_PANEL_WIDTH - 24);
     lv_obj_align(s_state.title, LV_ALIGN_TOP_MID, 0, 70);
     lv_label_set_long_mode(s_state.title, LV_LABEL_LONG_DOT);
-    style_label(s_state.title, lv_color_white(), &lv_font_montserrat_20);
+    style_label(s_state.title, lv_color_white(), &lv_font_montserrat_24);
 
     s_state.subtitle = lv_label_create(s_state.screen);
     lv_label_set_text(s_state.subtitle, "GRAND PRIX");

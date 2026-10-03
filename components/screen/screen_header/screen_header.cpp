@@ -85,7 +85,7 @@ void screen_header_create(flag_view_t *view, const char *title,
     view->lap_header = lv_label_create(header);
     lv_obj_set_width(view->lap_header, BSP_DISPLAY_PANEL_WIDTH);
     lv_obj_set_style_text_color(view->lap_header, lv_color_white(), 0);
-    lv_obj_set_style_text_font(view->lap_header, &lv_font_montserrat_36, 0);
+    lv_obj_set_style_text_font(view->lap_header, &lv_font_montserrat_32, 0);
     lv_obj_set_style_text_align(view->lap_header, LV_TEXT_ALIGN_CENTER, 0);
     update_lap_label(view, title);
     lv_obj_update_layout(view->lap_header);
@@ -95,8 +95,8 @@ void screen_header_create(flag_view_t *view, const char *title,
 
     view->time_header = lv_label_create(header);
     lv_obj_set_width(view->time_header, BSP_DISPLAY_PANEL_WIDTH);
-    lv_obj_set_style_text_color(view->time_header, lv_color_white(), 0);
-    lv_obj_set_style_text_font(view->time_header, &lv_font_montserrat_36, 0);
+    lv_obj_set_style_text_color(view->time_header, lv_color_make(0xCC, 0xCC, 0xCC), 0);
+    lv_obj_set_style_text_font(view->time_header, &lv_font_montserrat_32, 0);
     lv_obj_set_style_text_align(view->time_header, LV_TEXT_ALIGN_CENTER, 0);
     update_time_label(view, remaining_seconds);
     const int32_t time_row_top = LOGO_ROW_HEIGHT + LAP_ROW_HEIGHT;
