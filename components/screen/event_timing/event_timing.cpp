@@ -4,6 +4,7 @@
 #include "lvgl.h"
 
 #include <algorithm>
+#include <cctype>
 
 extern "C" {
 extern const uint8_t _binary_team_logo_rbr_rgb565_start[];
@@ -126,7 +127,7 @@ const lv_image_dsc_t *team_logo_image(flag_team_t team) {
 }
 
 lv_color_t tyre_color(char tyre) {
-    switch (tyre) {
+    switch (std::toupper(static_cast<unsigned char>(tyre))) {
         case 'S':
             return lv_color_hex(0xFF1E1E); // soft
         case 'M':
@@ -196,16 +197,16 @@ void create_row(lv_obj_t *panel, const event_timing_row_t &row) {
     lv_obj_align(driver_bar, LV_ALIGN_LEFT_MID, 4, 0);
 
     lv_obj_t *driver_label = create_label(driver_col, lv_color_white());
-    lv_label_set_text(driver_label, row.driver_code);
+    lv_label_set_text(driver_label, row.driver_code != nullptr ? row.driver_code : "---");
     lv_obj_align(driver_label, LV_ALIGN_LEFT_MID, DRIVER_BAR_WIDTH + 10, 0);
 
     lv_obj_t *interval_col = create_column(row_obj, INTERVAL_COL_FLEX);
     lv_obj_t *interval_label = create_label(interval_col, lv_color_white());
-    lv_label_set_text(interval_label, row.interval);
+    lv_label_set_text(interval_label, row.interval != nullptr ? row.interval : "");
     lv_obj_align(interval_label, LV_ALIGN_RIGHT_MID, -4, 0);
 
     lv_obj_t *tyre_col = create_column(row_obj, TYRE_COL_FLEX);
-    const char tyre_text[2] = {row.tyre, '\0'};
+    const char tyre_text[2] = {row.tyre != '\0' ? static_cast<char>(std::toupper(static_cast<unsigned char>(row.tyre))) : '-', '\0'};
     lv_label_set_text(create_label(tyre_col, tyre_color(row.tyre)), tyre_text);
 }
 
@@ -228,7 +229,7 @@ void event_timing_create(flag_view_t *view) {
 }
 
 void event_timing_update(flag_view_t *view, const event_timing_row_t *rows, size_t row_count) {
-    if (view->event_timing_panel == nullptr) {
+    if (view->event_timing_panel == nullptr || (rows == nullptr && row_count > 0)) {
         return;
     }
     lv_obj_clean(view->event_timing_panel);

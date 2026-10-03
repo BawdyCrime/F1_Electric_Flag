@@ -3,7 +3,6 @@ idf_component_register(
         "screen_header/screen_header.cpp"
         "flag_display.cpp"
         "session_selector.cpp"
-        "flag_display/flag_header.cpp"
         "flag_display/flag_panel.cpp"
         "flag_display/dot_matrix.cpp"
         "flag_display/matrix_patterns.cpp"

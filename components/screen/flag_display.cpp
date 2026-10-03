@@ -2,11 +2,11 @@
 
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
-#include "flag_header.h"
 #include "event_timing.h"
 #include "flag_panel.h"
 #include "lvgl.h"
 #include "matrix_pattern.h"
+#include "screen_header.h"
 
 #include <cstdint>
 
@@ -83,7 +83,7 @@ static void update_all_headers(void) {
     flag_view_t *views[] = {&s_state.event_timing, &s_state.green, &s_state.red, &s_state.yellow,
                             &s_state.blue,         &s_state.double_yellow, &s_state.safety_car, &s_state.vsc};
     for (flag_view_t *view : views) {
-        flag_header_update(view, s_state.current_lap, s_state.total_laps, s_state.remaining_seconds);
+        screen_header_update(view, s_state.current_lap, s_state.total_laps, s_state.remaining_seconds);
     }
 }
 
@@ -142,7 +142,7 @@ esp_err_t flag_display_init(void) {
         return ESP_FAIL;
     }
 
-    flag_header_create(&s_state.event_timing, s_state.current_lap, s_state.total_laps, s_state.remaining_seconds);
+    screen_header_create(&s_state.event_timing, s_state.current_lap, s_state.total_laps, s_state.remaining_seconds);
     event_timing_create(&s_state.event_timing);
 
     flag_view_t *flag_views[] = {&s_state.green, &s_state.red, &s_state.yellow, &s_state.blue,
@@ -151,7 +151,7 @@ esp_err_t flag_display_init(void) {
                                          &BLUE_MATRIX_PATTERN, &DOUBLE_YELLOW_MATRIX_PATTERN,
                                          &SAFETY_CAR_MATRIX_PATTERN, &VSC_MATRIX_PATTERN};
     for (size_t i = 0; i < sizeof(flag_views) / sizeof(flag_views[0]); ++i) {
-        flag_header_create(flag_views[i], s_state.current_lap, s_state.total_laps, s_state.remaining_seconds);
+        screen_header_create(flag_views[i], s_state.current_lap, s_state.total_laps, s_state.remaining_seconds);
         flag_panel_create(flag_views[i], flag_patterns[i]);
     }
 

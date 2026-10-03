@@ -413,7 +413,7 @@ void render_sessions_locked()
 
         std::string secondary = session.cancelled
                                     ? "CANCELLED"
-                                    : format_local_date(session.date_start) + " LOCAL";
+                                    : format_local_date(session.date_start);
         lv_obj_t *details = lv_label_create(row);
         lv_label_set_text(details, secondary.c_str());
         lv_obj_set_width(details, BSP_DISPLAY_PANEL_WIDTH / 2 - 24);
