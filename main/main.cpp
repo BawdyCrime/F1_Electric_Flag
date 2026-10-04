@@ -394,7 +394,7 @@ static bool update_flags()
         ++s_replay.rc_count;
         const bool clear = m.flag == "CLEAR" || m.flag == "GREEN";
         if (m.category == "SafetyCar") {
-            const bool virt = m.message.find("VIRTUAL") != std::string::npos;
+            const bool virt = m.message.find("VIRTUAL") != std::string::npos || m.message.find("VSC") != std::string::npos;
             bool &state = virt ? s_replay.vsc : s_replay.sc;
             if (m.message.find("DEPLOYED") != std::string::npos) {
                 state = true;
@@ -418,9 +418,10 @@ static bool update_flags()
         }
     }
 
+    // Worst active yellow wins: any double yellow, else any yellow.
     int yellow = 0;
-    for (int level : s_replay.sector_yellow) {
-        yellow = std::max(yellow, level);
+    for (size_t i = 0; i < 64; ++i) {
+        yellow = std::max(yellow, s_replay.sector_yellow[i]);
     }
     flag_screen_t wanted = FLAG_SCREEN_EVENT_TIMING;
     if (s_replay.red) {

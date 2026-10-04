@@ -83,9 +83,15 @@ char matrix_pattern_get_pixel(size_t row, size_t column, void *user_data) {
             return pattern->triangle_state ? (column >= row ? pattern->pixel : '.')
                                            : (row >= column ? pattern->pixel : '.');
         case MATRIX_PATTERN_SAFETY_CAR:
-            return SAFETY_CAR_MATRIX[row][column];
+        {
+            const char pixel = SAFETY_CAR_MATRIX[row][column];
+            return pixel == 'Y' && !pattern->visible ? '.' : pixel;
+        }
         case MATRIX_PATTERN_VSC:
-            return VSC_MATRIX[row][column];
+        {
+            const char pixel = VSC_MATRIX[row][column];
+            return pixel == 'Y' && !pattern->visible ? '.' : pixel;
+        }
     }
     return '.';
 }

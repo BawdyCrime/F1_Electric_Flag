@@ -21,6 +21,7 @@ constexpr int32_t RACE_ROW_HEIGHT = 62;
 constexpr int32_t SESSION_ROW_HEIGHT = 58;
 constexpr int32_t SESSION_LIST_TOP = 136;
 constexpr int32_t SESSION_LIST_BOTTOM_MARGIN = 52;
+constexpr time_t SESSION_PRESTART_S = 300;
 constexpr int32_t BACK_TOUCH_TARGET_WIDTH = 120;
 constexpr int32_t BACK_TOUCH_TARGET_HEIGHT = 48;
 static const char *TAG = "session_selector";
@@ -212,7 +213,7 @@ void render_sessions_locked()
     const time_t now = time(nullptr);
     for (size_t index = 0; index < s_state.sessions.size(); ++index) {
         const session_t &session = s_state.sessions[index];
-        const bool disabled = session.cancelled || session.start_epoch > now;
+        const bool disabled = session.cancelled || session.start_epoch > now + SESSION_PRESTART_S;
         const bool selected = static_cast<int>(index) == s_state.selected_session;
         lv_obj_t *row = create_row(s_state.list, SESSION_ROW_HEIGHT, selected);
         const lv_color_t color = disabled ? lv_color_hex(0x666666) : lv_color_white();
@@ -303,7 +304,7 @@ void handle_click_locked(int x, int y, click_result_t *result)
         return;
     }
     const session_t &session = s_state.sessions[index];
-    if (session.cancelled || session.start_epoch > time(nullptr)) {
+    if (session.cancelled || session.start_epoch > time(nullptr) + SESSION_PRESTART_S) {
         return;
     }
     s_state.selected_session = index;

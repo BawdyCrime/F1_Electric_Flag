@@ -64,6 +64,10 @@ static lv_obj_t *get_blinking_flag_square(void) {
             return s_state.yellow.square;
         case FLAG_SCREEN_BLUE:
             return s_state.blue.square;
+        case FLAG_SCREEN_SAFETY_CAR:
+            return s_state.safety_car.square;
+        case FLAG_SCREEN_VSC:
+            return s_state.vsc.square;
         default:
             return nullptr;
     }
@@ -75,6 +79,10 @@ static matrix_pattern_t *get_blinking_flag_pattern(void) {
             return &YELLOW_MATRIX_PATTERN;
         case FLAG_SCREEN_BLUE:
             return &BLUE_MATRIX_PATTERN;
+        case FLAG_SCREEN_SAFETY_CAR:
+            return &SAFETY_CAR_MATRIX_PATTERN;
+        case FLAG_SCREEN_VSC:
+            return &VSC_MATRIX_PATTERN;
         default:
             return nullptr;
     }
@@ -132,6 +140,26 @@ static esp_err_t show_screen(flag_view_t *view, flag_screen_t screen_id) {
     }
 
     pause_flag_timers();
+    load_screen_locked(view->screen, screen_id);
+    lvgl_port_unlock();
+    return ESP_OK;
+}
+
+static esp_err_t show_blinking_matrix_flag(flag_view_t *view, flag_screen_t screen_id,
+                                           matrix_pattern_t *pattern) {
+    if (view == nullptr || view->screen == nullptr || view->square == nullptr || pattern == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!lvgl_port_lock(0)) {
+        ESP_LOGE(TAG, "lvgl_port_lock failed");
+        return ESP_FAIL;
+    }
+
+    pause_flag_timers();
+    pattern->visible = true;
+    lv_obj_invalidate(view->square);
+    lv_timer_reset(s_state.flag_blink_timer);
+    lv_timer_resume(s_state.flag_blink_timer);
     load_screen_locked(view->screen, screen_id);
     lvgl_port_unlock();
     return ESP_OK;
@@ -310,9 +338,9 @@ esp_err_t flag_display_show_double_yellow(void) {
 }
 
 esp_err_t flag_display_show_safety_car(void) {
-    return show_screen(&s_state.safety_car, FLAG_SCREEN_SAFETY_CAR);
+    return show_blinking_matrix_flag(&s_state.safety_car, FLAG_SCREEN_SAFETY_CAR, &SAFETY_CAR_MATRIX_PATTERN);
 }
 
 esp_err_t flag_display_show_vsc(void) {
-    return show_screen(&s_state.vsc, FLAG_SCREEN_VSC);
+    return show_blinking_matrix_flag(&s_state.vsc, FLAG_SCREEN_VSC, &VSC_MATRIX_PATTERN);
 }

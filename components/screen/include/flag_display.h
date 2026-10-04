@@ -83,10 +83,10 @@ esp_err_t flag_display_show_blue(void);
 // Shows the double yellow flag; two triangles split the square and blink alternately.
 esp_err_t flag_display_show_double_yellow(void);
 
-// Shows the yellow Safety Car flag with a centered "SC" mark.
+// Shows the Safety Car flag with a blinking yellow edge and centered "SC" mark.
 esp_err_t flag_display_show_safety_car(void);
 
-// Shows the Virtual Safety Car flag with a centered "VSC" mark.
+// Shows the Virtual Safety Car flag with a blinking yellow edge and centered "VSC" mark.
 esp_err_t flag_display_show_vsc(void);
 
 #ifdef __cplusplus
