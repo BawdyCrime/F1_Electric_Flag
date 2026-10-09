@@ -47,7 +47,7 @@ f1_team_t f1_team_from_colour(const char *hex);
 const char *f1_team_code(f1_team_t team);
 
 typedef struct {
-    uint8_t position;
+    uint8_t position; // 0 when the driver's race position is not available yet
     f1_team_t team;
     const char *driver_code; // 3-letter driver code
     const char *interval;    // pre-formatted gap text, e.g. "Interval" or "+0.842"
@@ -65,8 +65,12 @@ flag_screen_t flag_display_get_current_screen(void);
 esp_err_t flag_display_show_event_timing(const char *session_name, uint32_t current_lap, uint32_t total_laps,
                                          const event_timing_row_t *rows, size_t row_count);
 
+// Updates the timing table and shared header without changing the currently shown screen.
+esp_err_t flag_display_update_event_timing(const char *session_name, uint32_t current_lap, uint32_t total_laps,
+                                           const event_timing_row_t *rows, size_t row_count);
+
 // Updates the shared header race time from the remaining duration in seconds.
-esp_err_t flag_display_update_race_time(uint32_t remaining_seconds);
+esp_err_t flag_display_update_race_time(int32_t remaining_seconds);
 
 // Shows a full-screen green flag, used briefly on any flag-clear transition.
 esp_err_t flag_display_show_green(void);

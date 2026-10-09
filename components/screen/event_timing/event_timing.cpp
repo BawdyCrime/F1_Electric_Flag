@@ -185,7 +185,8 @@ void create_row(lv_obj_t *panel, const event_timing_row_t &row) {
     lv_obj_set_scrollable(row_obj, false);
 
     lv_obj_t *position_col = create_column(row_obj, POSITION_COL_FLEX);
-    lv_label_set_text_fmt(create_label(position_col, lv_color_white()), "%u", (unsigned)row.position);
+    lv_label_set_text_fmt(create_label(position_col, lv_color_white()), row.position > 0 ? "%u" : "-",
+                          (unsigned)row.position);
     
     lv_obj_t *team_col = create_column(row_obj, TEAM_COL_FLEX);
     const lv_image_dsc_t *logo = team_logo_image(row.team);

@@ -67,7 +67,7 @@ struct Segment {
 // Race control flag / safety car message.
 struct RaceControl {
     time_t when = 0;
-    std::string category;  // "Flag" or "SafetyCar"
+    std::string category;  // "Flag", "SafetyCar" or "SessionStatus"
     std::string flag;      // GREEN, YELLOW, DOUBLE YELLOW, RED, CLEAR, CHEQUERED...
     std::string scope;     // Track, Sector, Driver
     std::string message;

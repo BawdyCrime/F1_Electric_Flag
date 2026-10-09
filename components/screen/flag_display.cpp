@@ -16,7 +16,7 @@
 static const char *TAG = "flag_display";
 
 static constexpr uint32_t BLINK_PERIOD_MS = 500;
-static constexpr uint32_t GREEN_AUTO_REVERT_MS = 10000; // 10 seconds
+static constexpr uint32_t GREEN_AUTO_REVERT_MS = 5 * 1000; // 10 seconds
 
 struct flag_display_state_t {
     flag_view_t event_timing;
@@ -32,7 +32,7 @@ struct flag_display_state_t {
     lv_timer_t *green_revert_timer = nullptr;
     uint32_t current_lap = 0;
     uint32_t total_laps = 0;
-    uint32_t remaining_seconds = 0;
+    int32_t remaining_seconds = 0;
     char session_name[32] = "";
     char title[48] = "";
     flag_screen_t current_screen = FLAG_SCREEN_EVENT_TIMING;
@@ -43,8 +43,14 @@ static flag_display_state_t s_state;
 // Header title: "RACE - LAP x/y" for races, otherwise the session name.
 static void refresh_title(void) {
     if (strcasecmp(s_state.session_name, "Race") == 0) {
-        snprintf(s_state.title, sizeof(s_state.title), "RACE - LAP %u/%u", (unsigned)s_state.current_lap,
-                 (unsigned)s_state.total_laps);
+        if (s_state.current_lap == 0) {
+            snprintf(s_state.title, sizeof(s_state.title), "RACE");
+        } else if (s_state.total_laps == 0) {
+            snprintf(s_state.title, sizeof(s_state.title), "RACE - LAP %u", (unsigned)s_state.current_lap);
+        } else {
+            snprintf(s_state.title, sizeof(s_state.title), "RACE - LAP %u/%u", (unsigned)s_state.current_lap,
+                     (unsigned)s_state.total_laps);
+        }
     } else {
         snprintf(s_state.title, sizeof(s_state.title), "%s", s_state.session_name);
     }
@@ -165,20 +171,29 @@ static esp_err_t show_blinking_matrix_flag(flag_view_t *view, flag_screen_t scre
     return ESP_OK;
 }
 
-// Shows the event timing screen; assumes the LVGL port lock is already held.
-static void show_event_timing_locked(uint32_t current_lap, uint32_t total_laps, const char *session_name) {
+// Updates timing content and shared headers; assumes the LVGL port lock is already held.
+static void update_event_timing_locked(const char *session_name, uint32_t current_lap, uint32_t total_laps,
+                                       const event_timing_row_t *rows, size_t row_count) {
+    event_timing_update(&s_state.event_timing, rows, row_count);
     s_state.current_lap = current_lap;
     s_state.total_laps = total_laps;
     snprintf(s_state.session_name, sizeof(s_state.session_name), "%s", session_name != nullptr ? session_name : "");
     refresh_title();
     update_all_headers();
+}
+
+// Shows the event timing screen; assumes the LVGL port lock is already held.
+static void show_event_timing_locked(const char *session_name, uint32_t current_lap, uint32_t total_laps,
+                                    const event_timing_row_t *rows, size_t row_count) {
+    update_event_timing_locked(session_name, current_lap, total_laps, rows, row_count);
     pause_flag_timers();
     load_screen_locked(s_state.event_timing.screen, FLAG_SCREEN_EVENT_TIMING);
 }
 
 static void green_revert_timer_cb(lv_timer_t *timer) {
     (void)timer;
-    show_event_timing_locked(s_state.current_lap, s_state.total_laps, s_state.session_name);
+    pause_flag_timers();
+    load_screen_locked(s_state.event_timing.screen, FLAG_SCREEN_EVENT_TIMING);
 }
 
 esp_err_t flag_display_init(void) {
@@ -228,14 +243,30 @@ esp_err_t flag_display_show_event_timing(const char *session_name, uint32_t curr
         return ESP_FAIL;
     }
 
-    event_timing_update(&s_state.event_timing, rows, row_count);
-    show_event_timing_locked(current_lap, total_laps, session_name);
+    show_event_timing_locked(session_name, current_lap, total_laps, rows, row_count);
 
     lvgl_port_unlock();
     return ESP_OK;
 }
 
-esp_err_t flag_display_update_race_time(uint32_t remaining_seconds) {
+esp_err_t flag_display_update_event_timing(const char *session_name, uint32_t current_lap, uint32_t total_laps,
+                                           const event_timing_row_t *rows, size_t row_count) {
+    if (s_state.event_timing.screen == nullptr || s_state.event_timing.lap_header == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (!lvgl_port_lock(0)) {
+        ESP_LOGE(TAG, "lvgl_port_lock failed");
+        return ESP_FAIL;
+    }
+
+    update_event_timing_locked(session_name, current_lap, total_laps, rows, row_count);
+
+    lvgl_port_unlock();
+    return ESP_OK;
+}
+
+esp_err_t flag_display_update_race_time(int32_t remaining_seconds) {
     if (s_state.event_timing.screen == nullptr || s_state.event_timing.time_header == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }

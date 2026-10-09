@@ -49,22 +49,23 @@ static void update_lap_label(flag_view_t *view, const char *title) {
     lv_label_set_text(view->lap_header, title != nullptr ? title : "");
 }
 
-static void update_time_label(flag_view_t *view, uint32_t remaining_seconds) {
-    const uint32_t hours = remaining_seconds / 3600U;
-    const uint32_t minutes = (remaining_seconds / 60U) % 60U;
-    const uint32_t seconds = remaining_seconds % 60U;
-    lv_label_set_text_fmt(view->time_header, "%02u:%02u:%02u", (unsigned)hours, (unsigned)minutes,
-                          (unsigned)seconds);
+static void update_time_label(flag_view_t *view, int32_t remaining_seconds) {
+    const uint32_t total = static_cast<uint32_t>(remaining_seconds < 0 ? -remaining_seconds : remaining_seconds);
+    const uint32_t hours = total / 3600U;
+    const uint32_t minutes = (total / 60U) % 60U;
+    const uint32_t seconds = total % 60U;
+    lv_label_set_text_fmt(view->time_header, "%s%02u:%02u:%02u", remaining_seconds < 0 ? "-" : "", (unsigned)hours,
+                          (unsigned)minutes, (unsigned)seconds);
 }
 
 void screen_header_update(flag_view_t *view, const char *title,
-                          uint32_t remaining_seconds) {
+                          int32_t remaining_seconds) {
     update_lap_label(view, title);
     update_time_label(view, remaining_seconds);
 }
 
 void screen_header_create(flag_view_t *view, const char *title,
-                          uint32_t remaining_seconds) {
+                          int32_t remaining_seconds) {
     view->screen = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(view->screen, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(view->screen, LV_OPA_COVER, 0);

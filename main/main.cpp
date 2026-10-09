@@ -99,13 +99,13 @@ static void load_sessions(uint32_t meeting_key)
 // Replay of a past session: a virtual clock starts at the session start and advances in real time.
 // Live: the same state and rendering, but the clock is wall time and queries fetch only what changed.
 // Live polling stays under the OpenF1 limit (30 req/min): 3 requests per tick plus an occasional refresh.
-constexpr int REPLAY_TICK_MS = 5000;
-constexpr int LIVE_TICK_MS = 8000;
+constexpr int REPLAY_TICK_MS = 5 * 1000;
+constexpr int LIVE_TICK_MS = 8 * 1000;
 constexpr int LIVE_REFRESH_S = 30;     // live: stints and qualifying segments change during the session
-constexpr int LIVE_PRESTART_S = 600;   // live mode starts this long before the scheduled start
-constexpr int LIVE_POSTEND_S = 300;    // and ends this long after the scheduled end
+constexpr int LIVE_PRESTART_S = 10 * 60;  // live mode starts this long before the scheduled start
+constexpr int LIVE_POSTEND_S = 3 * 60 * 60; // and ends this long after the scheduled end (delayed starts/red flags overrun it)
 constexpr int REPLAY_WINDOW_S = 10;
-constexpr int LAP_LOOKBACK_S = 300; // longer than any lap that could still set a best time
+constexpr int LAP_LOOKBACK_S = 5 * 60; // longer than any lap that could still set a best time
 
 struct replay_t {
     volatile bool active = false;
@@ -140,6 +140,8 @@ struct replay_t {
     // Race control: processed up to rc_when (rc_count messages already applied at that second).
     time_t rc_when = 0;
     size_t rc_count = 0;
+    time_t countdown_start = 0; // scheduled start, then reset once when session activity is observed
+    bool countdown_reset = false;
     bool red = false;
     bool chequered = false;
     bool sc = false;
@@ -176,7 +178,7 @@ static time_t replay_query_time()
 }
 
 // Seconds shown in the header: time left in the current qualifying segment, otherwise in the session.
-static uint32_t header_remaining(time_t now)
+static int32_t header_remaining(time_t now)
 {
     if (!s_replay.segments.empty()) {
         const f1::Segment *current = &s_replay.segments[0];
@@ -190,9 +192,19 @@ static uint32_t header_remaining(time_t now)
         }
         // Before a segment starts, show its full length; after it ends, 0 until the next one begins.
         const time_t from = std::max(now, current->start_epoch);
-        return static_cast<uint32_t>(current->end_epoch > from ? current->end_epoch - from : 0);
+        return static_cast<int32_t>(current->end_epoch > from ? current->end_epoch - from : 0);
     }
-    return static_cast<uint32_t>(s_replay.end > now ? s_replay.end - now : 0);
+    const time_t duration = s_replay.end - s_replay.start;
+    const time_t from = std::max(now, s_replay.countdown_start);
+    return static_cast<int32_t>(s_replay.countdown_start + duration - from);
+}
+
+static void reset_countdown(time_t at)
+{
+    if (!s_replay.countdown_reset) {
+        s_replay.countdown_start = at;
+        s_replay.countdown_reset = true;
+    }
 }
 
 // Header countdown (session end minus replay time), updated every second independent of slow fetches.
@@ -277,6 +289,7 @@ static void replay_tick_best_laps()
     s_replay.last_lap_query = now;
 
     for (const f1::LapTime &lap : laps) {
+        reset_countdown(now);
         if (lap.start_epoch + static_cast<time_t>(lap.duration_s) > now) {
             continue; // not finished yet at replay time
         }
@@ -340,7 +353,9 @@ static void replay_tick_best_laps()
         rows[i].interval = times[i].c_str();
         rows[i].tyre = tyre_for(entries[i].driver_number, entries[i].last_lap);
     }
-    if (!s_replay.hold_flag) {
+    if (s_replay.hold_flag) {
+        flag_display_update_event_timing(title.c_str(), 0, 0, rows.data(), rows.size());
+    } else {
         flag_display_show_event_timing(title.c_str(), 0, 0, rows.data(), rows.size());
     }
 }
@@ -379,7 +394,7 @@ static bool update_flags()
     const time_t until = s_replay.live ? replay_now() : replay_query_time();
     std::vector<f1::RaceControl> messages;
     if (openf1::fetch_race_control(s_replay.session_key, s_replay.rc_when, until, &messages) != ESP_OK) {
-        return s_replay.shown_flag != FLAG_SCREEN_EVENT_TIMING;
+        return flag_display_get_current_screen() != FLAG_SCREEN_EVENT_TIMING;
     }
     size_t skip = s_replay.rc_count;
     for (const f1::RaceControl &m : messages) {
@@ -393,7 +408,11 @@ static bool update_flags()
         }
         ++s_replay.rc_count;
         const bool clear = m.flag == "CLEAR" || m.flag == "GREEN";
-        if (m.category == "SafetyCar") {
+        if (m.category == "SessionStatus") {
+            if (m.message.find("STARTED") != std::string::npos) {
+                reset_countdown(m.when);
+            }
+        } else if (m.category == "SafetyCar") {
             const bool virt = m.message.find("VIRTUAL") != std::string::npos || m.message.find("VSC") != std::string::npos;
             bool &state = virt ? s_replay.vsc : s_replay.sc;
             if (m.message.find("DEPLOYED") != std::string::npos) {
@@ -439,7 +458,8 @@ static bool update_flags()
     }
 
     if (wanted == s_replay.shown_flag) {
-        return wanted != FLAG_SCREEN_EVENT_TIMING;
+        return wanted != FLAG_SCREEN_EVENT_TIMING ||
+               flag_display_get_current_screen() != FLAG_SCREEN_EVENT_TIMING;
     }
     const flag_screen_t previous = s_replay.shown_flag;
     s_replay.shown_flag = wanted;
@@ -519,6 +539,9 @@ static void replay_tick()
     if (snapshot.lap > 0 || !s_replay.live) {
         s_replay.lap = snapshot.lap;
     }
+    if (snapshot.lap > 0) {
+        reset_countdown(replay_query_time());
+    }
 
     for (const f1::Interval &fresh : snapshot.intervals) {
         auto known = std::find_if(s_replay.intervals.begin(), s_replay.intervals.end(),
@@ -530,12 +553,23 @@ static void replay_tick()
         }
     }
 
-    const size_t count = std::min(s_replay.positions.size(), EVENT_TIMING_MAX_ROWS);
+    std::vector<f1::Position> display_positions = s_replay.positions;
+    for (const f1::Driver &driver : s_replay.drivers) {
+        const auto known = std::find_if(display_positions.begin(), display_positions.end(),
+                                        [&](const f1::Position &position) {
+                                            return position.driver_number == driver.number;
+                                        });
+        if (known == display_positions.end()) {
+            display_positions.push_back({driver.number, 0});
+        }
+    }
+
+    const size_t count = std::min(display_positions.size(), EVENT_TIMING_MAX_ROWS);
     std::vector<event_timing_row_t> rows(count);
     std::vector<std::array<char, 4>> codes(count);
     std::vector<std::string> gaps(count);
     for (size_t i = 0; i < count; ++i) {
-        const f1::Position &position = s_replay.positions[i];
+        const f1::Position &position = display_positions[i];
         const f1::Driver *driver = find_driver(position.driver_number);
         codes[i] = {'-', '-', '-', '\0'};
         rows[i].position = static_cast<uint8_t>(position.position);
@@ -544,9 +578,10 @@ static void replay_tick()
             std::snprintf(codes[i].data(), codes[i].size(), "%s", driver->code.c_str());
             rows[i].team = team_for(*driver);
         }
-        gaps[i] = position.position == 1 ? "Interval" : "";
+        gaps[i] = position.position == 1 ? "Interval" : "-";
         for (const f1::Interval &interval : s_replay.intervals) {
-            if (interval.driver_number == position.driver_number && position.position != 1) {
+            if (interval.driver_number == position.driver_number && position.position != 1 &&
+                !interval.interval.empty()) {
                 gaps[i] = interval.interval;
             }
         }
@@ -554,7 +589,10 @@ static void replay_tick()
         rows[i].interval = gaps[i].c_str();
         rows[i].tyre = tyre_for(position.driver_number, s_replay.lap);
     }
-    if (!s_replay.hold_flag) {
+    if (s_replay.hold_flag) {
+        flag_display_update_event_timing(s_replay.session_name.c_str(), s_replay.lap, s_replay.total_laps,
+                                         rows.data(), rows.size());
+    } else {
         flag_display_show_event_timing(s_replay.session_name.c_str(), s_replay.lap, s_replay.total_laps,
                                        rows.data(), rows.size());
     }
@@ -598,6 +636,7 @@ static void show_timing(uint32_t session_key)
     s_replay.session_key = session_key;
     s_replay.session_name = selected->name;
     s_replay.start = selected->start_epoch;
+    s_replay.countdown_start = selected->start_epoch;
     s_replay.end = selected->end_epoch;
     if (flag_display_show_event_timing(selected->name.c_str(), 0, 0, nullptr, 0) != ESP_OK) {
         return;

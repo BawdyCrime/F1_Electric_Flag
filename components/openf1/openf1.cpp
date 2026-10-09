@@ -21,8 +21,8 @@ constexpr char TOKEN_URL[] = "https://api.openf1.org/token";
 constexpr int TOKEN_EXPIRY_MARGIN_S = 60;
 constexpr int LIVE_OVERLAP_S = 15;
 constexpr int LIVE_FIRST_INTERVAL_WINDOW_S = 30;
-constexpr int LIVE_LAP_WINDOW_S = 300; // longer than a safety-car lap, to find the leader's current lap
-constexpr int DEFAULT_TOKEN_LIFETIME_S = 3600;
+constexpr int LIVE_LAP_WINDOW_S = 5 * 60; // longer than a safety-car lap, to find the leader's current lap
+constexpr int DEFAULT_TOKEN_LIFETIME_S = 60 * 60;
 static const char *TAG = "openf1";
 
 std::string s_login;
@@ -584,7 +584,7 @@ esp_err_t fetch_race_control(uint32_t session_key, time_t from_epoch, time_t unt
     cJSON_ArrayForEach(item, root) {
         f1::RaceControl entry;
         entry.category = json_string(item, "category");
-        if (entry.category != "Flag" && entry.category != "SafetyCar") {
+        if (entry.category != "Flag" && entry.category != "SafetyCar" && entry.category != "SessionStatus") {
             continue;
         }
         entry.when = parse_utc_time(json_string(item, "date"));
